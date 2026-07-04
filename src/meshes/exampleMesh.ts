@@ -4,7 +4,7 @@ import fragmentShader from '../shaders/example.frag'
 
 export function createExampleMesh(): THREE.Mesh {
   const geometry = new THREE.CircleGeometry(1, 8)
-  const material = new THREE.ShaderMaterial({
+  const material = new THREE.RawShaderMaterial({
     vertexShader,
     fragmentShader,
     uniforms: {
