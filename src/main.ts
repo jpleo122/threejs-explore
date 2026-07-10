@@ -1,5 +1,10 @@
 import * as THREE from 'three'
 import { createExampleMesh } from './meshes/exampleMesh'
+import { AnimatedMesh } from './animatedMesh'
+
+const CONFIG = {
+  PARTICLE_COUNT: 100
+}
 
 const canvas = document.querySelector<HTMLCanvasElement>('#app')!
 
@@ -28,13 +33,20 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight)
 })
 
+window.addEventListener('pointermove', (e) => {
+  material.uniforms.uMouse.value.set(
+    e.clientX / window.innerWidth,
+    1.0 - e.clientY / window.innerHeight, // flip Y: DOM top-down → GL bottom-up
+  )
+})
+
 const clock = new THREE.Clock()
 
 function tick() {
   const elapsed = clock.getElapsedTime()
   material.uniforms.uTime.value = elapsed
-  mesh.rotation.x = elapsed * 0.3
-  mesh.rotation.y = elapsed * 0.5
+  // mesh.rotation.x = elapsed * 0.3
+  // mesh.rotation.y = elapsed * 0.5
   renderer.render(scene, camera)
   requestAnimationFrame(tick)
 }
