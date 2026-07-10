@@ -78,15 +78,15 @@ function init() {
 
     const CONFIG: ParticleConfig = {
         width: 64,
-        maxParticleRadius: 10,
-        particleRadiusExponent: 0.2,
-        randParticleRadius: 0.001,
-        radius: 300,
-        height: 10,
-        exponent: 0.5,
-        velocity: 70 * 3,
-        velocityExponent: 0.1,
-        randVelocity: 0.02
+        maxParticleRadius: 3,
+        particleRadiusExponent: 5,
+        randParticleRadius: 0.5,
+        radius: 400,
+        height: 1,
+        exponent: 1,
+        velocity: 70,
+        velocityExponent: 0.001,
+        randVelocity: 0.001
     }
 
     const canvas = document.querySelector<HTMLCanvasElement>('#app')!
@@ -97,7 +97,6 @@ function init() {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(window.innerWidth, window.innerHeight)
-    // renderer.setAnimationLoop( () );
 
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -234,7 +233,7 @@ function fillTextures( { config, texturePosition, textureVelocity }: FillTexture
         z *= rExp;
         const y = ( Math.random() * 2 - 1 ) * height;
 
-        const pRadius = maxParticleRadius * Math.pow( rr, particleRadiusExponent ) + ( Math.random() * 2 - 1 ) * randParticleRadius;
+        const pRadius = maxParticleRadius + ( Math.random() * 2 - 1 ) * randParticleRadius;
 
         // Fill in texture values
         posArray[ k + 0 ] = x;
