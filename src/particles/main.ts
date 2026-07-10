@@ -28,7 +28,8 @@ type RenderProps = {
     velocityVariable: Variable
     camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
-    particleUniforms: particleUniforms
+    particleUniforms: particleUniforms,
+    clock: THREE.Clock
 }
 
 type AnimateProps = RenderProps & {
@@ -94,6 +95,8 @@ function init() {
     let stats = new Stats();
     document.body.appendChild( stats.dom );
 
+    const clock = new THREE.Clock();
+
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(window.innerWidth, window.innerHeight)
@@ -117,15 +120,16 @@ function init() {
 
     window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }))
 
-    renderer.setAnimationLoop( () => animate({ 
-        renderer, 
-        gpuCompute, 
+    renderer.setAnimationLoop( () => animate({
+        renderer,
+        gpuCompute,
         positionVariable,
         velocityVariable,
-        camera, 
-        scene, 
-        stats, 
-        particleUniforms
+        camera,
+        scene,
+        stats,
+        particleUniforms,
+        clock
     }) );
 }
 
@@ -168,6 +172,8 @@ function initParticles( { config, camera }: InitParticleProps): InitParticle {
         'texturePosition': { value: null },
         'textureVelocity': { value: null },
         'cameraConstant': { value: getCameraConstant( camera ) },
+        'simulationRadius': { value: config.radius },
+        'uTime': { value: 0.0 },
     };
 
     // THREE.ShaderMaterial
@@ -299,14 +305,12 @@ function animate({ stats, ...rest }: AnimateProps) {
     stats.update()
 }
 
-function render({ renderer, scene, camera, gpuCompute, particleUniforms, positionVariable, velocityVariable }: RenderProps) {
-    // const elapsed = clock.getElapsedTime();
-    // material.uniforms.uTime.value = elapsed
-
+function render({ renderer, scene, camera, gpuCompute, particleUniforms, positionVariable, velocityVariable, clock }: RenderProps) {
     gpuCompute.compute();
 
+    particleUniforms[ 'uTime' ].value = clock.getElapsedTime();
     particleUniforms[ 'texturePosition' ].value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
 	particleUniforms[ 'textureVelocity' ].value = gpuCompute.getCurrentRenderTarget( velocityVariable ).texture;
-    
+
     renderer.render(scene, camera)
 }

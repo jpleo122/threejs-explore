@@ -9,6 +9,8 @@ uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
 
 uniform float cameraConstant;
+uniform float simulationRadius;
+uniform float uTime;
 
 attribute vec2 uv;
 
@@ -16,6 +18,10 @@ varying vec4 vColor;
 
 float hash( float n ) {
     return fract( sin( n ) * 43758.5453123 );
+}
+
+float random(vec2 st) {
+    return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
 }
 
 vec3 hsv2rgb( vec3 c ) {
@@ -32,10 +38,21 @@ void main() {
     vec3 vel = velTemp.xyz;
     float radius = velTemp.w;
 
-    float alive = step( 0.0001, radius );
-    vColor = vec4( hsv2rgb( vec3( hash( radius ), 0.85, 1.0 ) ), alive );
-
     vec4 mvPosition = modelViewMatrix * vec4( pos, 1.0 );
+
+    float hue = clamp(
+        (
+            length(pos) / simulationRadius) + 
+            (((sin(uTime * 1.5) + 1.0) * 0.25) - 0.25
+        ),
+        0.0, 
+        1.0
+    );
+
+    // float alive = step( 0.0001, radius );
+    vColor = vec4( hsv2rgb( vec3( hue, (70.0 / 255.0), 1.0 ) ), 1.0 );
+
+    // vColor = vec4( vec3(1), 0.5 );
 
     // Apparent size in pixels
     if ( radius == 0.0 ) {
