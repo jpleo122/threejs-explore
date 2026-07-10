@@ -3,7 +3,10 @@ import { createExampleMesh } from './meshes/exampleMesh'
 import { AnimatedMesh } from './animatedMesh'
 
 const CONFIG = {
-  PARTICLE_COUNT: 100
+  STATIC: {
+    PARTICLE_COUNT: 100,
+    PARTICLE_RADIUS: 2
+  }
 }
 
 const canvas = document.querySelector<HTMLCanvasElement>('#app')!
@@ -18,7 +21,7 @@ const camera = new THREE.PerspectiveCamera(
   60,
   window.innerWidth / window.innerHeight,
   0.1,
-  100,
+  10000,
 )
 camera.position.z = 3
 

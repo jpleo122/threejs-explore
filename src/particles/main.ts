@@ -7,7 +7,9 @@ type RenderProps = {
     renderer: THREE.WebGLRenderer
     gpuCompute: GPUComputationRenderer,
     camera: THREE.PerspectiveCamera,
-    scene: THREE.Scene
+    scene: THREE.Scene,
+    clock: THREE.Clock,
+    material: THREE.ShaderMaterial
 }
 
 type AnimateProps = RenderProps & {
@@ -42,7 +44,7 @@ function init() {
       60,
       window.innerWidth / window.innerHeight,
       0.1,
-      100,
+      1000,
     )
     camera.position.z = 3
 
@@ -54,9 +56,11 @@ function init() {
 
     const gpuCompute = new GPUComputationRenderer(CONFIG.WIDTH, CONFIG.WIDTH, renderer)
 
+    const clock = new THREE.Clock();
+
     window.addEventListener('resize', () => onResize({ renderer, camera, material }))
 
-    animate({ renderer, gpuCompute, camera, scene, stats })
+    renderer.setAnimationLoop( () => animate({ renderer, gpuCompute, camera, scene, stats, clock, material }) );
 }
 
 function onResize({ renderer, camera }: ResizeProps) {
@@ -70,6 +74,8 @@ function animate({ stats, ...rest }: AnimateProps) {
     stats.update()
 }
 
-function render({ renderer, scene, camera }: RenderProps) {
+function render({ renderer, scene, camera, clock, material }: RenderProps) {
+    const elapsed = clock.getElapsedTime();
+    material.uniforms.uTime.value = elapsed
     renderer.render(scene, camera)
 }
