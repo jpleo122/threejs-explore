@@ -1,15 +1,34 @@
 import * as THREE from 'three'
-import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js';
+import { GPUComputationRenderer, Variable } from 'three/addons/misc/GPUComputationRenderer.js';
 import Stats from 'three/addons/libs/stats.module.js';
-import { createExampleMesh } from '../meshes/exampleMesh';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import particleFragmentShader from './shaders/particles.frag';
+import particleVertexShader from './shaders/particles.vert';
+import positionShader from './shaders/position.frag';
+import velocityShader from './shaders/velocity.frag';
+
+
+type ParticleConfig = {
+    width: number,
+    maxParticleRadius: number,
+    particleRadiusExponent: number,
+    randParticleRadius: number,
+    radius: number,
+    height: number,
+    exponent: number,
+    velocity: number
+    velocityExponent: number,
+    randVelocity: number
+}
 
 type RenderProps = {
     renderer: THREE.WebGLRenderer
     gpuCompute: GPUComputationRenderer,
+    positionVariable: Variable,
+    velocityVariable: Variable
     camera: THREE.PerspectiveCamera,
     scene: THREE.Scene,
-    clock: THREE.Clock,
-    material: THREE.ShaderMaterial
+    particleUniforms: particleUniforms
 }
 
 type AnimateProps = RenderProps & {
@@ -19,21 +38,61 @@ type AnimateProps = RenderProps & {
 type ResizeProps = {
     renderer: THREE.WebGLRenderer
     camera: THREE.PerspectiveCamera,
-    material: THREE.ShaderMaterial
+    particleUniforms: particleUniforms
+}
+
+type InitParticleProps = {
+    config: ParticleConfig,
+    camera: THREE.PerspectiveCamera
+}
+
+type particleUniforms = {
+    [uniform: string]: THREE.IUniform<any>;
+}
+
+type InitParticle = {
+    scene: THREE.Scene,
+    particleUniforms: particleUniforms
+}
+
+type InitComputeRendererProps = {
+    config: ParticleConfig,
+    renderer: THREE.WebGLRenderer
+}
+
+type InitComputeRenderer = {
+    gpuCompute: GPUComputationRenderer,
+    positionVariable: Variable,
+    velocityVariable: Variable
+}
+
+type FillTexturesProps = {
+    config: ParticleConfig,
+    texturePosition: THREE.DataTexture,
+    textureVelocity: THREE.DataTexture
 }
 
 init();
 
 function init() {
 
-    const CONFIG = {
-        WIDTH: 64
+    const CONFIG: ParticleConfig = {
+        width: 64,
+        maxParticleRadius: 10,
+        particleRadiusExponent: 0.2,
+        randParticleRadius: 0.001,
+        radius: 300,
+        height: 10,
+        exponent: 0.5,
+        velocity: 70 * 3,
+        velocityExponent: 0.1,
+        randVelocity: 0.02
     }
 
     const canvas = document.querySelector<HTMLCanvasElement>('#app')!
 
     let stats = new Stats();
-    canvas.appendChild( stats.dom );
+    document.body.appendChild( stats.dom );
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -41,32 +100,199 @@ function init() {
     // renderer.setAnimationLoop( () );
 
     const camera = new THREE.PerspectiveCamera(
-      60,
+      75,
       window.innerWidth / window.innerHeight,
-      0.1,
-      1000,
+      5,
+      15000,
     )
-    camera.position.z = 3
+    camera.position.y = 120;
+    camera.position.z = 400;
 
-    const scene = new THREE.Scene();
-    const mesh = createExampleMesh()
-    scene.add(mesh)
+    const controls = new OrbitControls( camera, renderer.domElement );
+    controls.minDistance = 0;
+    controls.maxDistance = 1000;
 
-    const material = mesh.material as THREE.ShaderMaterial
+    const { scene, particleUniforms } = initParticles({ config: CONFIG, camera });
 
-    const gpuCompute = new GPUComputationRenderer(CONFIG.WIDTH, CONFIG.WIDTH, renderer)
+    const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
 
-    const clock = new THREE.Clock();
+    window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }))
 
-    window.addEventListener('resize', () => onResize({ renderer, camera, material }))
-
-    renderer.setAnimationLoop( () => animate({ renderer, gpuCompute, camera, scene, stats, clock, material }) );
+    renderer.setAnimationLoop( () => animate({ 
+        renderer, 
+        gpuCompute, 
+        positionVariable,
+        velocityVariable,
+        camera, 
+        scene, 
+        stats, 
+        particleUniforms
+    }) );
 }
 
-function onResize({ renderer, camera }: ResizeProps) {
+function initParticles( { config, camera }: InitParticleProps): InitParticle {
+
+    var geometry = new THREE.BufferGeometry();
+    const width = config.width;
+    const particleCount = width * width;
+    const simulationRadius = config.radius
+
+    const positions = new Float32Array( particleCount * 3 );
+    let p = 0;
+
+    for ( let i = 0; i < particleCount; i ++ ) {
+
+        positions[ p ++ ] = ( Math.random() * 2 - 1 ) * simulationRadius;
+        positions[ p ++ ] = 0; //( Math.random() * 2 - 1 ) * effectController.radius;
+        positions[ p ++ ] = ( Math.random() * 2 - 1 ) * simulationRadius;
+
+    }
+
+    const uvs = new Float32Array( particleCount * 2 );
+    p = 0;
+
+    for ( let j = 0; j < width; j ++ ) {
+
+        for ( let i = 0; i < width; i ++ ) {
+
+            uvs[ p ++ ] = i / ( width - 1 );
+            uvs[ p ++ ] = j / ( width - 1 );
+
+        }
+
+    }
+
+    geometry.setAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+    geometry.setAttribute( 'uv', new THREE.BufferAttribute( uvs, 2 ) );
+
+    const particleUniforms = {
+        'texturePosition': { value: null },
+        'textureVelocity': { value: null },
+        'cameraConstant': { value: getCameraConstant( camera ) },
+    };
+
+    // THREE.ShaderMaterial
+    const material = new THREE.RawShaderMaterial( {
+        uniforms: particleUniforms,
+        vertexShader: particleVertexShader,
+        fragmentShader: particleFragmentShader
+    } );
+
+    const particles = new THREE.Points( geometry, material );
+    particles.matrixAutoUpdate = false;
+    particles.updateMatrix();
+
+    const scene = new THREE.Scene()
+    scene.add( particles );
+
+    return {
+        scene,
+        particleUniforms
+    }
+}
+
+function fillTextures( { config, texturePosition, textureVelocity }: FillTexturesProps) {
+
+    const posArray = texturePosition.image.data;
+    const velArray = textureVelocity.image.data;
+
+    const maxParticleRadius = config.maxParticleRadius
+    const randParticleRadius = config.randParticleRadius
+    const particleRadiusExponent = config.particleRadiusExponent
+    const simulationRadius = config.radius;
+    const height = config.height;
+    const exponent = config.exponent;
+    const maxVel = config.velocity;
+    const velExponent = config.velocityExponent;
+    const randVel = config.randVelocity;
+
+    for ( let k = 0, kl = posArray.length; k < kl; k += 4 ) {
+
+        // Position
+        let x, z, rr;
+
+        do {
+
+            x = ( Math.random() * 2 - 1 );
+            z = ( Math.random() * 2 - 1 );
+            rr = x * x + z * z;
+
+        } while ( rr > 1 );
+
+        rr = Math.sqrt( rr );
+
+        const rExp = simulationRadius * Math.pow( rr, exponent );
+
+        // Velocity
+        const vel = maxVel * Math.pow( rr, velExponent );
+
+        const vx = vel * z + ( Math.random() * 2 - 1 ) * randVel;
+        const vy = ( Math.random() * 2 - 1 ) * randVel * 0.05;
+        const vz = - vel * x + ( Math.random() * 2 - 1 ) * randVel;
+
+        x *= rExp;
+        z *= rExp;
+        const y = ( Math.random() * 2 - 1 ) * height;
+
+        const pRadius = maxParticleRadius * Math.pow( rr, particleRadiusExponent ) + ( Math.random() * 2 - 1 ) * randParticleRadius;
+
+        // Fill in texture values
+        posArray[ k + 0 ] = x;
+        posArray[ k + 1 ] = y;
+        posArray[ k + 2 ] = z;
+        posArray[ k + 3 ] = 1;
+
+        velArray[ k + 0 ] = vx;
+        velArray[ k + 1 ] = vy;
+        velArray[ k + 2 ] = vz;
+        velArray[ k + 3 ] = pRadius;
+
+    }
+
+}
+
+function initComputeRenderer( { config, renderer }: InitComputeRendererProps): InitComputeRenderer {
+
+    let gpuCompute = new GPUComputationRenderer( config.width, config.width, renderer );
+
+    const dtPosition = gpuCompute.createTexture();
+    const dtVelocity = gpuCompute.createTexture();
+
+    fillTextures( { config, texturePosition: dtPosition, textureVelocity: dtVelocity } );
+
+    const velocityVariable = gpuCompute.addVariable( 'textureVelocity', velocityShader, dtVelocity );
+    const positionVariable = gpuCompute.addVariable( 'texturePosition', positionShader, dtPosition );
+
+    gpuCompute.setVariableDependencies( velocityVariable, [ positionVariable, velocityVariable ] );
+    gpuCompute.setVariableDependencies( positionVariable, [ positionVariable, velocityVariable ] );
+
+    var velocityUniforms = velocityVariable.material.uniforms;
+
+    // velocityUniforms[ 'gravityConstant' ] = { value: 0.0 };
+    velocityUniforms[ 'simulationRadius' ] = { value: config.radius };
+
+    const error = gpuCompute.init();
+
+    if ( error !== null ) {
+        console.error( error );
+    }
+
+    return {
+        gpuCompute,
+        velocityVariable,
+        positionVariable
+    }
+}
+
+function getCameraConstant( camera: THREE.PerspectiveCamera ) {
+    return window.innerHeight / ( Math.tan( THREE.MathUtils.DEG2RAD * 0.5 * camera.fov ) / camera.zoom );
+}
+
+function onResize({ renderer, camera, particleUniforms }: ResizeProps) {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
+  particleUniforms[ 'cameraConstant' ].value = getCameraConstant( camera );
 }
 
 function animate({ stats, ...rest }: AnimateProps) {
@@ -74,8 +300,14 @@ function animate({ stats, ...rest }: AnimateProps) {
     stats.update()
 }
 
-function render({ renderer, scene, camera, clock, material }: RenderProps) {
-    const elapsed = clock.getElapsedTime();
-    material.uniforms.uTime.value = elapsed
+function render({ renderer, scene, camera, gpuCompute, particleUniforms, positionVariable, velocityVariable }: RenderProps) {
+    // const elapsed = clock.getElapsedTime();
+    // material.uniforms.uTime.value = elapsed
+
+    gpuCompute.compute();
+
+    particleUniforms[ 'texturePosition' ].value = gpuCompute.getCurrentRenderTarget( positionVariable ).texture;
+	particleUniforms[ 'textureVelocity' ].value = gpuCompute.getCurrentRenderTarget( velocityVariable ).texture;
+    
     renderer.render(scene, camera)
 }
