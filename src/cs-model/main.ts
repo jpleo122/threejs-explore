@@ -236,9 +236,9 @@ function fillTextures( { config, texturePosition, textureVelocity }: FillTexture
         // Velocity
         const vel = maxVel * Math.pow( rr, velExponent );
 
-        const vx = vel * z + ( Math.random() * 2 - 1 ) * randVel;
-        const vy = ( Math.random() * 2 - 1 ) * randVel;
-        const vz = - vel * x + ( Math.random() * 2 - 1 ) * randVel;
+        const vx = vel * ( Math.random() * 2 - 1 ) * randVel;
+        const vy = vel * ( Math.random() * 2 - 1 ) * randVel;
+        const vz = - vel + ( Math.random() * 2 - 1 ) * randVel;
 
         x *= rExp;
         z *= rExp;
