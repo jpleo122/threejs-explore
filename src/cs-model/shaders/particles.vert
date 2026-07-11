@@ -31,9 +31,9 @@ void main() {
 
     vec4 mvPosition = modelViewMatrix * vec4( pos, 1.0 );
 
-    vec4 clipBase = projectionMatrix * mvPosition;
-    vec4 clipTip  = projectionMatrix * ( modelViewMatrix * vec4( pos + normalize( vel ), 1.0 ) );
-    vec2 ndcDir   = clipTip.xy / clipTip.w - clipBase.xy / clipBase.w;
+    vec4 clip    = projectionMatrix * mvPosition;
+    vec4 clipVel = projectionMatrix * ( modelViewMatrix * vec4( vel, 0.0 ) );
+    vec2 ndcDir  = ( clipVel.xy * clip.w - clip.xy * clipVel.w ) / ( clip.w * clip.w );
     vAngle = ( length( vel ) > 1e-6 ) ? atan( ndcDir.y, ndcDir.x ) : 0.0;
 
     vColor = vec4( hsv2rgb( vec3( (100.0 / 255.0), (70.0 / 255.0), 1.0 ) ), 1.0 );

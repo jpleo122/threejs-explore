@@ -3,6 +3,9 @@ precision highp float;
 varying vec4 vColor;
 varying float vAngle;
 
+const vec3 edgeColor = vec3( 1.0 );
+const float edgeWidth = 0.06;
+
 void main() {
 
     if ( vColor.a == 0.0 ) discard;
@@ -16,6 +19,11 @@ void main() {
     float halfW = ( 0.5 - p.x ) * 0.4;
     if ( abs( p.y ) > halfW ) discard;
 
-    gl_FragColor = vColor;
+    float dBack = p.x + 0.3;
+    float dSide = ( halfW - abs( p.y ) ) / 1.077;
+    float edge  = min( dBack, dSide );
+
+    float t = smoothstep( 0.0, edgeWidth, edge );
+    gl_FragColor = vec4( mix( edgeColor, vColor.rgb, t ), vColor.a );
 
 }
