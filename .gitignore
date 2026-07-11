@@ -38,3 +38,6 @@ Thumbs.db
 # Cache
 .vite
 .cache
+
+# Examples
+examples/

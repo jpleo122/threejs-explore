@@ -182,56 +182,51 @@ function init() {
     }) );
 }
 
-function initParticles( { config, camera }: InitParticleProps): InitParticle {
+function initParticles( { config }: InitParticleProps): InitParticle {
 
-    var geometry = new THREE.BufferGeometry();
     const width = config.width;
     const particleCount = width * width;
-    const simulationRadius = config.radius
 
-    const positions = new Float32Array( particleCount * 3 );
+    const cone = new THREE.ConeGeometry( 0.5, 2.0, 8 );
+    cone.rotateX( Math.PI / 2 ); // orient the tip along +Z (forward)
+    cone.deleteAttribute( 'uv' );
+
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.index = cone.index;
+    geometry.setAttribute( 'position', cone.getAttribute( 'position' ) );
+    geometry.setAttribute( 'normal', cone.getAttribute( 'normal' ) );
+
+    // Per-instance uv into the simulation textures (one per particle).
+    const references = new Float32Array( particleCount * 2 );
     let p = 0;
-
-    for ( let i = 0; i < particleCount; i ++ ) {
-
-        positions[ p ++ ] = ( Math.random() * 2 - 1 ) * simulationRadius;
-        positions[ p ++ ] = 0; //( Math.random() * 2 - 1 ) * effectController.radius;
-        positions[ p ++ ] = ( Math.random() * 2 - 1 ) * simulationRadius;
-
-    }
-
-    const uvs = new Float32Array( particleCount * 2 );
-    p = 0;
 
     for ( let j = 0; j < width; j ++ ) {
 
         for ( let i = 0; i < width; i ++ ) {
 
-            uvs[ p ++ ] = i / ( width - 1 );
-            uvs[ p ++ ] = j / ( width - 1 );
+            references[ p ++ ] = i / ( width - 1 );
+            references[ p ++ ] = j / ( width - 1 );
 
         }
 
     }
 
-    geometry.setAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
-    geometry.setAttribute( 'uv', new THREE.BufferAttribute( uvs, 2 ) );
+    geometry.setAttribute( 'reference', new THREE.InstancedBufferAttribute( references, 2 ) );
+    geometry.instanceCount = particleCount;
 
     const particleUniforms = {
         'texturePosition': { value: null },
         'textureVelocity': { value: null },
-        'cameraConstant': { value: getCameraConstant( camera ) },
-
     };
 
-    // THREE.ShaderMaterial
     const material = new THREE.RawShaderMaterial( {
         uniforms: particleUniforms,
         vertexShader: particleVertexShader,
         fragmentShader: particleFragmentShader
     } );
 
-    const particles = new THREE.Points( geometry, material );
+    const particles = new THREE.Mesh( geometry, material );
+    particles.frustumCulled = false; // positions come from the texture, not the base geometry
     particles.matrixAutoUpdate = false;
     particles.updateMatrix();
 
@@ -279,7 +274,7 @@ function fillTextures( { config, texturePosition, textureVelocity }: FillTexture
 
         const vx = vel * ( Math.random() * 2 - 1 ) * randVel;
         const vy = vel * ( Math.random() * 2 - 1 ) * randVel;
-        const vz = - vel + ( Math.random() * 2 - 1 ) * randVel;
+        const vz = - vel * ( Math.random() * 2 - 1 ) * randVel;
 
         x *= rExp;
         z *= rExp;
@@ -397,15 +392,10 @@ function initGUI( { config, gpuCompute, positionVariable, velocityVariable }: In
     return { gui };
 }
 
-function getCameraConstant( camera: THREE.PerspectiveCamera ) {
-    return window.innerHeight / ( Math.tan( THREE.MathUtils.DEG2RAD * 0.5 * camera.fov ) / camera.zoom );
-}
-
-function onResize({ renderer, camera, particleUniforms }: ResizeProps) {
+function onResize({ renderer, camera }: ResizeProps) {
   camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
   renderer.setSize(window.innerWidth, window.innerHeight)
-  particleUniforms[ 'cameraConstant' ].value = getCameraConstant( camera );
 }
 
 function animate({ stats, ...rest }: AnimateProps) {

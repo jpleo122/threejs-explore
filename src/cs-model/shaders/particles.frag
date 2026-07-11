@@ -1,29 +1,16 @@
 precision highp float;
 
 varying vec4 vColor;
-varying float vAngle;
-
-const vec3 edgeColor = vec3( 1.0 );
-const float edgeWidth = 0.06;
+varying vec3 vNormal;
 
 void main() {
 
-    if ( vColor.a == 0.0 ) discard;
+    vec3 normal = normalize( vNormal );
+    vec3 lightDir = normalize( vec3( 0.4, 0.7, 1.0 ) );
 
-    vec2 p = gl_PointCoord - 0.5;
-    p.y = -p.y;
-    float c = cos( vAngle ), s = sin( vAngle );
-    p = mat2( c, -s, s, c ) * p;
+    float diffuse = max( dot( normal, lightDir ), 0.0 );
+    float shade = 0.35 + 0.65 * diffuse;
 
-    if ( p.x > 0.5 || p.x < -0.3 ) discard;
-    float halfW = ( 0.5 - p.x ) * 0.4;
-    if ( abs( p.y ) > halfW ) discard;
-
-    float dBack = p.x + 0.3;
-    float dSide = ( halfW - abs( p.y ) ) / 1.077;
-    float edge  = min( dBack, dSide );
-
-    float t = smoothstep( 0.0, edgeWidth, edge );
-    gl_FragColor = vec4( mix( edgeColor, vColor.rgb, t ), vColor.a );
+    gl_FragColor = vec4( vColor.rgb * shade, vColor.a );
 
 }
