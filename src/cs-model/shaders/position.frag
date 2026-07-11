@@ -1,5 +1,3 @@
-#define delta ( 1.0 / 60.0 )
-
 precision highp float;
 
 // Injected by GPUComputationRenderer at runtime; guarded so editors resolve them.
@@ -9,7 +7,11 @@ uniform sampler2D texturePosition;
 uniform sampler2D textureVelocity;
 #endif
 
+uniform float deltaDenominator;
+
 void main() {
+
+    float delta = 1.0 / deltaDenominator;
 
     vec2 uv = gl_FragCoord.xy / resolution.xy;
 

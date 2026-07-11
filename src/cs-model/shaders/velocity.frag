@@ -1,8 +1,6 @@
 // For PI declaration:
 // #include <common>
 
-#define delta ( 1.0 / 60.0 )
-
 // Injected by GPUComputationRenderer / three at runtime; guarded so editors resolve them.
 #ifndef resolution
 #define resolution vec2( 1.0 )
@@ -14,6 +12,8 @@ precision highp float;
 
 uniform float K;
 uniform float beta;
+uniform float deltaDenominator;
+uniform float sphericalBounds;
 
 const float width = resolution.x;
 const float height = resolution.y;
@@ -29,6 +29,8 @@ float communication_coef( vec3 pos_i, vec3 pos_j ) {
 
 void main()	{
 
+    float delta = 1.0 / deltaDenominator;
+
     vec2 uv = gl_FragCoord.xy / resolution.xy;
 
     vec4 tmpPos = texture2D( texturePosition, uv );
@@ -39,6 +41,15 @@ void main()	{
     float radius = tmpVel.w;
 
     vec3 acceleration = vec3( 1 );
+
+    float distFromCenter = length(pos_i);
+    if ( distFromCenter > sphericalBounds && sphericalBounds != 0.0) {
+        vec3 normal = pos_i / distFromCenter;
+
+        if (dot(vel_i, normal) > 0.0) {
+            vel_i = reflect(vel_i, normal);
+        }
+    }
 
     // Bird interaction
     for ( float y = 0.0; y < height; y++ ) {

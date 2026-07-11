@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { GPUComputationRenderer, Variable } from 'three/addons/misc/GPUComputationRenderer.js';
 import Stats from 'three/addons/libs/stats.module.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import particleFragmentShader from './shaders/particles.frag';
 import particleVertexShader from './shaders/particles.vert';
 import positionShader from './shaders/position.frag';
@@ -28,7 +29,9 @@ type FlockConfig = {
     exponent: number, /* controls distribution of particles from center */
     initMaxVelocity: number
     velocityExponent: number, /* controls distribution of initialvelocities based on distance from center */
-    randVelocity: number
+    randVelocity: number,
+    deltaDenominator: number, /* integration timestep denominator, delta = 1 / deltaDenominator */
+    sphericalBoundMultiplier: number /* sphericalBounds = radius * sphericalBoundMultiplier */
 }
 
 type RenderProps = {
@@ -82,21 +85,56 @@ type FillTexturesProps = {
     textureVelocity: THREE.DataTexture
 }
 
+type DynamicValuesChangerProps = {
+    config: FlockConfig,
+    positionVariable: Variable,
+    velocityVariable: Variable
+}
+
+type DynamicValuesChanger = {
+    deltaDenominator: number
+}
+
+type RestartSimulationProps = {
+    config: FlockConfig,
+    gpuCompute: GPUComputationRenderer,
+    positionVariable: Variable,
+    velocityVariable: Variable
+}
+
+type RestartSimulation = {
+    texturePosition: THREE.DataTexture,
+    textureVelocity: THREE.DataTexture
+}
+
+type InitGUIProps = {
+    config: FlockConfig,
+    gpuCompute: GPUComputationRenderer,
+    positionVariable: Variable,
+    velocityVariable: Variable
+}
+
+type InitGUI = {
+    gui: GUI
+}
+
 init();
 
 function init() {
 
     const CONFIG: FlockConfig = {
         K: 100,
-        beta: 0.5,
+        beta: 0.45,
         width: 64,
         particleRadius: 3,
-        radius: 200,
+        radius: 100,
         height: 50,
         exponent: 0.0001,
         initMaxVelocity: 70 * 2,
         velocityExponent: 0.001,
-        randVelocity: 1
+        randVelocity: 1,
+        deltaDenominator: 60,
+        sphericalBoundMultiplier: 1
     }
 
     const canvas = document.querySelector<HTMLCanvasElement>('#app')!
@@ -126,6 +164,9 @@ function init() {
     const { scene, particleUniforms } = initParticles({ config: CONFIG, camera });
 
     const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
+
+    initGUI({ config: CONFIG, gpuCompute, positionVariable, velocityVariable });
+    dynamicValuesChanger({ config: CONFIG, positionVariable, velocityVariable });
 
     window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }))
 
@@ -280,6 +321,10 @@ function initComputeRenderer( { config, renderer }: InitComputeRendererProps): I
     velocityUniforms[ 'simulationRadius' ] = { value: config.radius };
     velocityUniforms[ 'K' ] = { value: config.K };
     velocityUniforms[ 'beta' ] = { value: config.beta };
+    velocityUniforms[ 'deltaDenominator' ] = { value: config.deltaDenominator };
+    velocityUniforms[ 'sphericalBounds' ] = { value: config.radius * config.sphericalBoundMultiplier };
+
+    positionVariable.material.uniforms[ 'deltaDenominator' ] = { value: config.deltaDenominator };
 
     const error = gpuCompute.init();
 
@@ -292,6 +337,64 @@ function initComputeRenderer( { config, renderer }: InitComputeRendererProps): I
         velocityVariable,
         positionVariable
     }
+}
+
+function dynamicValuesChanger( { config, positionVariable, velocityVariable }: DynamicValuesChangerProps): DynamicValuesChanger {
+
+    velocityVariable.material.uniforms[ 'deltaDenominator' ].value = config.deltaDenominator;
+    positionVariable.material.uniforms[ 'deltaDenominator' ].value = config.deltaDenominator;
+
+    return { deltaDenominator: config.deltaDenominator };
+}
+
+function restartSimulation( { config, gpuCompute, positionVariable, velocityVariable }: RestartSimulationProps): RestartSimulation {
+
+    const texturePosition = gpuCompute.createTexture();
+    const textureVelocity = gpuCompute.createTexture();
+
+    fillTextures( { config, texturePosition, textureVelocity } );
+
+    gpuCompute.renderTexture( texturePosition, positionVariable.renderTargets[ 0 ] );
+    gpuCompute.renderTexture( texturePosition, positionVariable.renderTargets[ 1 ] );
+    gpuCompute.renderTexture( textureVelocity, velocityVariable.renderTargets[ 0 ] );
+    gpuCompute.renderTexture( textureVelocity, velocityVariable.renderTargets[ 1 ] );
+
+    const velocityUniforms = velocityVariable.material.uniforms;
+    velocityUniforms[ 'simulationRadius' ].value = config.radius;
+    velocityUniforms[ 'K' ].value = config.K;
+    velocityUniforms[ 'beta' ].value = config.beta;
+    velocityUniforms[ 'sphericalBounds' ].value = config.radius * config.sphericalBoundMultiplier;
+
+    return { texturePosition, textureVelocity };
+}
+
+function initGUI( { config, gpuCompute, positionVariable, velocityVariable }: InitGUIProps): InitGUI {
+
+    const gui = new GUI( { width: 280 } );
+
+    const dynamicFolder = gui.addFolder( 'Dynamic parameters' );
+
+    dynamicFolder.add( config, 'deltaDenominator', 60, 6000, 1 ).onChange( () => dynamicValuesChanger( { config, positionVariable, velocityVariable } ) );
+
+    const staticFolder = gui.addFolder( 'Static parameters' );
+
+    staticFolder.add( config, 'K', 0.0, 1000.0, 0.05 );
+    staticFolder.add( config, 'beta', 0.0, 2.0, 0.01 );
+    staticFolder.add( config, 'particleRadius', 0.1, 20.0, 0.1 );
+    staticFolder.add( config, 'radius', 10.0, 1000.0, 1.0 );
+    staticFolder.add( config, 'height', 0.0, 200.0, 0.01 );
+    staticFolder.add( config, 'exponent', 0.0, 2.0, 0.0001 );
+    staticFolder.add( config, 'initMaxVelocity', 0.0, 500.0, 0.1 );
+    staticFolder.add( config, 'velocityExponent', 0.0, 1.0, 0.001 );
+    staticFolder.add( config, 'randVelocity', 0.0, 50.0, 0.1 );
+    staticFolder.add( config, 'sphericalBoundMultiplier', 0.0, 5.0, 0.01 );
+
+    staticFolder.add( { restart: () => restartSimulation( { config, gpuCompute, positionVariable, velocityVariable } ) }, 'restart' );
+
+    dynamicFolder.open();
+    staticFolder.open();
+
+    return { gui };
 }
 
 function getCameraConstant( camera: THREE.PerspectiveCamera ) {
