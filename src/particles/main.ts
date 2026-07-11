@@ -9,15 +9,15 @@ import velocityShader from './shaders/velocity.frag';
 
 
 type ParticleConfig = {
-    width: number,
+    width: number, /* width of gpu texture for particles, particle count = width ** 2 */
     maxParticleRadius: number,
     particleRadiusExponent: number,
     randParticleRadius: number,
-    radius: number,
-    height: number,
-    exponent: number,
+    radius: number, /* radius of bounding sphere */
+    height: number, /* max start height of particles */
+    exponent: number, /* controls distribution of particles from center */
     velocity: number
-    velocityExponent: number,
+    velocityExponent: number, /* controls distribution of velocities based on distance from center */
     randVelocity: number
 }
 
