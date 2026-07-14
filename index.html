@@ -6,12 +6,27 @@
     <title>threejs-explore</title>
     <style>
       * { margin: 0; padding: 0; }
-      html, body { height: 100%; overflow: hidden; }
+      html, body { height: 100%; overflow: hidden; background: #000; }
       canvas { display: block; }
+      #stage { position: fixed; inset: 0; }
+      #project {
+        position: fixed;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 10;
+        padding: 4px 8px;
+        font: 12px/1.4 monospace;
+        color: #eee;
+        background: #1a1a1a;
+        border: 1px solid #444;
+        border-radius: 4px;
+      }
     </style>
   </head>
   <body>
-    <canvas id="app"></canvas>
-    <script type="module" src="/src/cs-model/main.ts"></script>
+    <div id="stage"></div>
+    <select id="project"></select>
+    <script type="module" src="/src/bootstrap.ts"></script>
   </body>
 </html>

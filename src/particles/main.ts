@@ -6,6 +6,8 @@ import particleFragmentShader from './shaders/particles.frag';
 import particleVertexShader from './shaders/particles.vert';
 import positionShader from './shaders/position.frag';
 import velocityShader from './shaders/velocity.frag';
+import { disposeRenderer, disposeScene } from '../dispose';
+import type { Project } from '../projects';
 
 
 type ParticleConfig = {
@@ -73,9 +75,7 @@ type FillTexturesProps = {
     textureVelocity: THREE.DataTexture
 }
 
-init();
-
-function init() {
+export function start(container: HTMLElement): Project {
 
     const CONFIG: ParticleConfig = {
         width: 64,
@@ -90,10 +90,11 @@ function init() {
         randVelocity: 0.001
     }
 
-    const canvas = document.querySelector<HTMLCanvasElement>('#app')!
+    const canvas = document.createElement('canvas');
+    container.appendChild( canvas );
 
-    let stats = new Stats();
-    document.body.appendChild( stats.dom );
+    const stats = new Stats();
+    container.appendChild( stats.dom );
 
     const clock = new THREE.Clock();
 
@@ -118,7 +119,9 @@ function init() {
 
     const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
 
-    window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }))
+    const listeners = new AbortController();
+
+    window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }), { signal: listeners.signal })
 
     renderer.setAnimationLoop( () => animate({
         renderer,
@@ -131,6 +134,17 @@ function init() {
         particleUniforms,
         clock
     }) );
+
+    return {
+        dispose() {
+            listeners.abort();
+            controls.dispose();
+            gpuCompute.dispose();
+            disposeScene( scene );
+            disposeRenderer( renderer );
+            stats.dom.remove();
+        }
+    }
 }
 
 function initParticles( { config, camera }: InitParticleProps): InitParticle {
@@ -203,7 +217,6 @@ function fillTextures( { config, texturePosition, textureVelocity }: FillTexture
 
     const maxParticleRadius = config.maxParticleRadius
     const randParticleRadius = config.randParticleRadius
-    const particleRadiusExponent = config.particleRadiusExponent
     const simulationRadius = config.radius;
     const height = config.height;
     const exponent = config.exponent;

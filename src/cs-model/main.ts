@@ -7,6 +7,8 @@ import particleFragmentShader from './shaders/particles.frag';
 import particleVertexShader from './shaders/particles.vert';
 import positionShader from './shaders/position.frag';
 import velocityShader from './shaders/velocity.frag';
+import { disposeRenderer, disposeScene } from '../dispose';
+import type { Project } from '../projects';
 
 type FlockConfig = {
 
@@ -118,12 +120,10 @@ type InitGUI = {
     gui: GUI
 }
 
-init();
-
-function init() {
+export function start(container: HTMLElement): Project {
 
     const CONFIG: FlockConfig = {
-        K: 100,
+        K: 10,
         beta: 0.45,
         width: 64,
         particleRadius: 3,
@@ -134,15 +134,14 @@ function init() {
         velocityExponent: 0.001,
         randVelocity: 1,
         deltaDenominator: 60,
-        sphericalBoundMultiplier: 1
+        sphericalBoundMultiplier: 0
     }
 
-    const canvas = document.querySelector<HTMLCanvasElement>('#app')!
+    const canvas = document.createElement('canvas');
+    container.appendChild( canvas );
 
-    let stats = new Stats();
-    document.body.appendChild( stats.dom );
-
-    const clock = new THREE.Clock();
+    const stats = new Stats();
+    container.appendChild( stats.dom );
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -165,10 +164,22 @@ function init() {
 
     const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
 
-    initGUI({ config: CONFIG, gpuCompute, positionVariable, velocityVariable });
+    const { gui } = initGUI({ config: CONFIG, gpuCompute, positionVariable, velocityVariable });
     dynamicValuesChanger({ config: CONFIG, positionVariable, velocityVariable });
 
-    window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }))
+    const listeners = new AbortController();
+
+    window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }), { signal: listeners.signal })
+
+    window.addEventListener('keydown', ( event ) => {
+
+        if ( event.key !== 'r' && event.key !== 'R' ) return;
+        if ( event.metaKey || event.ctrlKey || event.altKey ) return;
+        if ( event.target instanceof HTMLInputElement ) return;
+
+        restartSimulation( { config: CONFIG, gpuCompute, positionVariable, velocityVariable } );
+
+    }, { signal: listeners.signal })
 
     renderer.setAnimationLoop( () => animate({
         renderer,
@@ -180,6 +191,18 @@ function init() {
         stats,
         particleUniforms
     }) );
+
+    return {
+        dispose() {
+            listeners.abort();
+            controls.dispose();
+            gui.destroy();
+            gpuCompute.dispose();
+            disposeScene( scene );
+            disposeRenderer( renderer );
+            stats.dom.remove();
+        }
+    }
 }
 
 function initParticles( { config }: InitParticleProps): InitParticle {
@@ -312,7 +335,6 @@ function initComputeRenderer( { config, renderer }: InitComputeRendererProps): I
 
     var velocityUniforms = velocityVariable.material.uniforms;
 
-    // velocityUniforms[ 'gravityConstant' ] = { value: 0.0 };
     velocityUniforms[ 'simulationRadius' ] = { value: config.radius };
     velocityUniforms[ 'K' ] = { value: config.K };
     velocityUniforms[ 'beta' ] = { value: config.beta };
