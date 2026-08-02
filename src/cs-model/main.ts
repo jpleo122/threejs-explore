@@ -8,32 +8,109 @@ import particleVertexShader from './shaders/particles.vert';
 import positionShader from './shaders/position.frag';
 import velocityShader from './shaders/velocity.frag';
 import { disposeRenderer, disposeScene } from '../dispose';
+import { createTooltips, type Tooltips } from '../components/tooltip';
 import type { Project } from '../projects';
 
+/* Cucker, F. & Smale, S. (2007), "Emergent Behavior in Flocks". */
 type FlockConfig = {
-
-    K: number, /* positive parameter */
-
-    /* 
-        Conclusion from paper:
-        
-        When β < 1/2: The system always achieves global flocking, meaning that all particles will 
-        eventually move together at the same constant velocity, regardless of their initial positions and velocities.
-
-        When β >= 1/2: Flocking is still possible, but only if the initial conditions meet specific requirements.
-    */
+    K: number,
     beta: number,
-
-    width: number, /* width of gpu texture for particles, particle count = width ** 2 */
+    width: number,
     particleRadius: number,
-    radius: number, /* radius of bounding sphere */
-    height: number, /* max start height of particles */
-    exponent: number, /* controls distribution of particles from center */
+    radius: number,
+    height: number,
+    exponent: number,
     initMaxVelocity: number
-    velocityExponent: number, /* controls distribution of initialvelocities based on distance from center */
+    velocityExponent: number,
     randVelocity: number,
-    deltaDenominator: number, /* integration timestep denominator, delta = 1 / deltaDenominator */
-    sphericalBoundMultiplier: number /* sphericalBounds = radius * sphericalBoundMultiplier */
+    deltaDenominator: number,
+    sphericalBoundMultiplier: number
+}
+
+type ParamSpec = {
+    value: number,
+    description: string,
+    min?: number,
+    max?: number,
+    step?: number
+}
+
+const WEIGHT = `
+    <math display="block">
+      <mi>a</mi><mo stretchy="false">(</mo><mi>r</mi><mo stretchy="false">)</mo><mo>=</mo>
+      <mfrac>
+        <mi>K</mi>
+        <msup>
+          <mrow>
+            <mo>(</mo><mn>1</mn><mo>+</mo><msup><mi>r</mi><mn>2</mn></msup><mo>)</mo>
+          </mrow>
+          <mi>&#946;</mi>
+        </msup>
+      </mfrac>
+    </math>`
+
+const PARAMS: Record<keyof FlockConfig, ParamSpec> = {
+    K: {
+        value: 10, min: 0.0, max: 1000.0, step: 0.05,
+        description: `Coupling strength <math><mi>K</mi></math> in the interaction weight
+            ${ WEIGHT }
+            Scales how strongly each particle is pulled toward its neighbours' velocities. Larger values flock harder and faster.`
+    },
+    beta: {
+        value: 0.45, min: 0.0, max: 2.0, step: 0.01,
+        description: `Decay exponent <math><mi>&#946;</mi></math> in the interaction weight
+            ${ WEIGHT }
+            Sets how fast influence falls off with the distance <math><mi>r</mi></math> between two particles.
+            Below <math><mfrac><mn>1</mn><mn>2</mn></mfrac></math> the flock <em>always</em> converges to a common
+            velocity, whatever the initial state. At or above it, convergence depends on the initial conditions.`
+    },
+    width: {
+        value: 64,
+        description: 'Width of the GPU simulation texture. Particle count is width squared.'
+    },
+    particleRadius: {
+        value: 3, min: 0.1, max: 20.0, step: 0.1,
+        description: 'Per-particle radius, carried through the velocity texture and used to size each cone.'
+    },
+    radius: {
+        value: 100, min: 10.0, max: 1000.0, step: 1.0,
+        description: 'Radius of the disc particles are seeded into, and the base for the spherical bound below.'
+    },
+    height: {
+        value: 50, min: 0.0, max: 200.0, step: 0.01,
+        description: 'Vertical spread at startup. Each particle is seeded at a random height within plus or minus this.'
+    },
+    exponent: {
+        value: 0.0001, min: 0.0, max: 2.0, step: 0.0001,
+        description: `Radial distribution of the starting positions. A particle sampled at normalised radius
+            <math><mi>u</mi></math> is placed at <math><mi>radius</mi><mo>&#8901;</mo><msup><mi>u</mi><mi>exponent</mi></msup></math>.
+            Near <math><mn>0</mn></math> every particle lands on the rim, forming a shell; larger values draw them inward.`
+    },
+    initMaxVelocity: {
+        value: 70 * 2, min: 0.0, max: 500.0, step: 0.1,
+        description: 'Upper bound on initial speed, before the distance falloff and randomisation below are applied.'
+    },
+    velocityExponent: {
+        value: 0.001, min: 0.0, max: 1.0, step: 0.001,
+        description: `Ties initial speed to distance from the centre:
+            <math><mi>speed</mi><mo>=</mo><mi>initMaxVelocity</mi><mo>&#8901;</mo><msup><mi>u</mi><mi>velocityExponent</mi></msup></math>.
+            Near <math><mn>0</mn></math> every particle starts at full speed wherever it sits.`
+    },
+    randVelocity: {
+        value: 1, min: 0.0, max: 50.0, step: 0.1,
+        description: 'Scales the random direction each particle starts with. At 0 nothing moves.'
+    },
+    deltaDenominator: {
+        value: 60, min: 60, max: 6000, step: 1,
+        description: `Integration timestep, as <math><mi>&#948;</mi><mo>=</mo><mfrac><mn>1</mn><mi>deltaDenominator</mi></mfrac></math>.
+            Higher means smaller steps: a slower but more stable simulation. The only parameter that applies live.`
+    },
+    sphericalBoundMultiplier: {
+        value: 0, min: 0.0, max: 5.0, step: 0.01,
+        description: `Reflecting sphere at <math><mi>radius</mi><mo>&#8901;</mo><mi>sphericalBoundMultiplier</mi></math>.
+            Particles crossing it outward have their velocity reflected back inward. At 0 the bound is off and the
+            flock is free to drift away.`
+    }
 }
 
 type RenderProps = {
@@ -117,25 +194,15 @@ type InitGUIProps = {
 }
 
 type InitGUI = {
-    gui: GUI
+    gui: GUI,
+    tooltips: Tooltips
 }
 
 export function start(container: HTMLElement): Project {
 
-    const CONFIG: FlockConfig = {
-        K: 10,
-        beta: 0.45,
-        width: 64,
-        particleRadius: 3,
-        radius: 100,
-        height: 50,
-        exponent: 0.0001,
-        initMaxVelocity: 70 * 2,
-        velocityExponent: 0.001,
-        randVelocity: 1,
-        deltaDenominator: 60,
-        sphericalBoundMultiplier: 0
-    }
+    const CONFIG = Object.fromEntries(
+        Object.entries( PARAMS ).map( ( [ key, spec ] ) => [ key, spec.value ] )
+    ) as FlockConfig;
 
     const canvas = document.createElement('canvas');
     container.appendChild( canvas );
@@ -164,7 +231,7 @@ export function start(container: HTMLElement): Project {
 
     const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
 
-    const { gui } = initGUI({ config: CONFIG, gpuCompute, positionVariable, velocityVariable });
+    const { gui, tooltips } = initGUI({ config: CONFIG, gpuCompute, positionVariable, velocityVariable });
     dynamicValuesChanger({ config: CONFIG, positionVariable, velocityVariable });
 
     const listeners = new AbortController();
@@ -196,6 +263,7 @@ export function start(container: HTMLElement): Project {
         dispose() {
             listeners.abort();
             controls.dispose();
+            tooltips.dispose();
             gui.destroy();
             gpuCompute.dispose();
             disposeScene( scene );
@@ -385,33 +453,49 @@ function restartSimulation( { config, gpuCompute, positionVariable, velocityVari
     return { texturePosition, textureVelocity };
 }
 
+const DYNAMIC_KEYS = [ 'deltaDenominator' ] as const;
+
+const STATIC_KEYS = [
+    'K', 'beta', 'particleRadius', 'radius', 'height', 'exponent',
+    'initMaxVelocity', 'velocityExponent', 'randVelocity', 'sphericalBoundMultiplier'
+] as const;
+
 function initGUI( { config, gpuCompute, positionVariable, velocityVariable }: InitGUIProps): InitGUI {
 
     const gui = new GUI( { width: 280 } );
+    const tooltips = createTooltips();
+
+    const addSlider = ( folder: GUI, key: keyof FlockConfig ) => {
+        const { min, max, step, description } = PARAMS[ key ];
+        const controller = folder.add( config, key, min, max, step );
+
+        tooltips.attach( controller.domElement, description );
+
+        return controller;
+    };
 
     const dynamicFolder = gui.addFolder( 'Dynamic parameters' );
 
-    dynamicFolder.add( config, 'deltaDenominator', 60, 6000, 1 ).onChange( () => dynamicValuesChanger( { config, positionVariable, velocityVariable } ) );
+    for ( const key of DYNAMIC_KEYS ) {
+        addSlider( dynamicFolder, key )
+            .onChange( () => dynamicValuesChanger( { config, positionVariable, velocityVariable } ) );
+    }
 
     const staticFolder = gui.addFolder( 'Static parameters' );
 
-    staticFolder.add( config, 'K', 0.0, 1000.0, 0.05 );
-    staticFolder.add( config, 'beta', 0.0, 2.0, 0.01 );
-    staticFolder.add( config, 'particleRadius', 0.1, 20.0, 0.1 );
-    staticFolder.add( config, 'radius', 10.0, 1000.0, 1.0 );
-    staticFolder.add( config, 'height', 0.0, 200.0, 0.01 );
-    staticFolder.add( config, 'exponent', 0.0, 2.0, 0.0001 );
-    staticFolder.add( config, 'initMaxVelocity', 0.0, 500.0, 0.1 );
-    staticFolder.add( config, 'velocityExponent', 0.0, 1.0, 0.001 );
-    staticFolder.add( config, 'randVelocity', 0.0, 50.0, 0.1 );
-    staticFolder.add( config, 'sphericalBoundMultiplier', 0.0, 5.0, 0.01 );
+    for ( const key of STATIC_KEYS ) addSlider( staticFolder, key );
 
-    staticFolder.add( { restart: () => restartSimulation( { config, gpuCompute, positionVariable, velocityVariable } ) }, 'restart' );
+    const restart = staticFolder.add(
+        { restart: () => restartSimulation( { config, gpuCompute, positionVariable, velocityVariable } ) },
+        'restart'
+    );
+
+    tooltips.attach( restart.domElement, 'Re-seed the simulation, applying any changed static parameters.' );
 
     dynamicFolder.open();
     staticFolder.open();
 
-    return { gui };
+    return { gui, tooltips };
 }
 
 function onResize({ renderer, camera }: ResizeProps) {
