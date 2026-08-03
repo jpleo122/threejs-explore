@@ -32,7 +32,8 @@ type ParamSpec = {
     description: string,
     min?: number,
     max?: number,
-    step?: number
+    step?: number,
+    name?: string
 }
 
 const WEIGHT = `
@@ -51,63 +52,72 @@ const WEIGHT = `
 
 const PARAMS: Record<keyof FlockConfig, ParamSpec> = {
     K: {
-        value: 10, min: 0.0, max: 1000.0, step: 0.05,
-        description: `Coupling strength <math><mi>K</mi></math> in the interaction weight
-            ${ WEIGHT }
+        value: 5, min: 1, max: 100, step: 1,
+        description: `${ WEIGHT }
             Scales how strongly each particle is pulled toward its neighbours' velocities. Larger values flock harder and faster.`
     },
     beta: {
         value: 0.45, min: 0.0, max: 2.0, step: 0.01,
+        name: "β",
         description: `Decay exponent <math><mi>&#946;</mi></math> in the interaction weight
             ${ WEIGHT }
-            Sets how fast influence falls off with the distance <math><mi>r</mi></math> between two particles.
-            Below <math><mfrac><mn>1</mn><mn>2</mn></mfrac></math> the flock <em>always</em> converges to a common
-            velocity, whatever the initial state. At or above it, convergence depends on the initial conditions.`
+            Sets how fast influence falls off with the distance <math><mi>r</mi></math> between two particles.`
     },
     width: {
-        value: 64,
-        description: 'Width of the GPU simulation texture. Particle count is width squared.'
+        value: 64, min: 10, max: 80, step: 1,
+        description: `<math display="block">
+              <mi>particleCount</mi><mo>=</mo><msup><mi>width</mi><mn>2</mn></msup>
+            </math>`
     },
     particleRadius: {
         value: 3, min: 0.1, max: 20.0, step: 0.1,
-        description: 'Per-particle radius, carried through the velocity texture and used to size each cone.'
+        name: "Particle Radius",
+        description: 'Used to size each cone.'
     },
     radius: {
         value: 100, min: 10.0, max: 1000.0, step: 1.0,
+        name: "Seed Disc Radius",
         description: 'Radius of the disc particles are seeded into, and the base for the spherical bound below.'
     },
     height: {
         value: 50, min: 0.0, max: 200.0, step: 0.01,
+        name: "Seed Disc Height",
         description: 'Vertical spread at startup. Each particle is seeded at a random height within plus or minus this.'
     },
     exponent: {
         value: 0.0001, min: 0.0, max: 2.0, step: 0.0001,
+        name: "Seed Distribution Exponent",
         description: `Radial distribution of the starting positions. A particle sampled at normalised radius
             <math><mi>u</mi></math> is placed at <math><mi>radius</mi><mo>&#8901;</mo><msup><mi>u</mi><mi>exponent</mi></msup></math>.
             Near <math><mn>0</mn></math> every particle lands on the rim, forming a shell; larger values draw them inward.`
     },
     initMaxVelocity: {
-        value: 70 * 2, min: 0.0, max: 500.0, step: 0.1,
+        value: 140, min: 0.0, max: 500.0, step: 1,
+        name: "Seed Max Velocity",
         description: 'Upper bound on initial speed, before the distance falloff and randomisation below are applied.'
     },
     velocityExponent: {
         value: 0.001, min: 0.0, max: 1.0, step: 0.001,
+        name: "Seed Velocity Exponent",
         description: `Ties initial speed to distance from the centre:
             <math><mi>speed</mi><mo>=</mo><mi>initMaxVelocity</mi><mo>&#8901;</mo><msup><mi>u</mi><mi>velocityExponent</mi></msup></math>.
             Near <math><mn>0</mn></math> every particle starts at full speed wherever it sits.`
     },
     randVelocity: {
         value: 1, min: 0.0, max: 50.0, step: 0.1,
-        description: 'Scales the random direction each particle starts with. At 0 nothing moves.'
+        name: "Direction Randomness",
+        description: 'Scales the random direction each particle starts with.'
     },
     deltaDenominator: {
-        value: 60, min: 60, max: 6000, step: 1,
-        description: `Integration timestep, as <math><mi>&#948;</mi><mo>=</mo><mfrac><mn>1</mn><mi>deltaDenominator</mi></mfrac></math>.
-            Higher means smaller steps: a slower but more stable simulation. The only parameter that applies live.`
+        value: 60, min: 10, max: 600, step: 1,
+        name: "Integration Timestep",
+        description: `<math><mi>&#948;</mi><mo>=</mo><mfrac><mn>1</mn><mi>Integration Timestep</mi></mfrac></math>.
+            Higher means smaller steps: a slower but more stable simulation.`
     },
     sphericalBoundMultiplier: {
-        value: 0, min: 0.0, max: 5.0, step: 0.01,
-        description: `Reflecting sphere at <math><mi>radius</mi><mo>&#8901;</mo><mi>sphericalBoundMultiplier</mi></math>.
+        value: 0, min: 0.0, max: 5.0, step: 1,
+        name: "Sphere Bound Multiplier",
+        description: `Optional reflecting sphere at <math><mi>radius</mi><mo>&#8901;</mo><mi>sphericalBoundMultiplier</mi></math>.
             Particles crossing it outward have their velocity reflected back inward. At 0 the bound is off and the
             flock is free to drift away.`
     }
@@ -456,7 +466,7 @@ function restartSimulation( { config, gpuCompute, positionVariable, velocityVari
 const DYNAMIC_KEYS = [ 'deltaDenominator' ] as const;
 
 const STATIC_KEYS = [
-    'K', 'beta', 'particleRadius', 'radius', 'height', 'exponent',
+    'K', 'beta', 'width', 'particleRadius', 'radius', 'height', 'exponent',
     'initMaxVelocity', 'velocityExponent', 'randVelocity', 'sphericalBoundMultiplier'
 ] as const;
 
@@ -466,8 +476,10 @@ function initGUI( { config, gpuCompute, positionVariable, velocityVariable }: In
     const tooltips = createTooltips();
 
     const addSlider = ( folder: GUI, key: keyof FlockConfig ) => {
-        const { min, max, step, description } = PARAMS[ key ];
-        const controller = folder.add( config, key, min, max, step );
+        const { min, max, step, description, name } = PARAMS[ key ];
+        const controller = folder.add( 
+            config, key, min, max, step 
+        ).name(name ?? key);
 
         tooltips.attach( controller.domElement, description );
 
@@ -488,9 +500,9 @@ function initGUI( { config, gpuCompute, positionVariable, velocityVariable }: In
     const restart = staticFolder.add(
         { restart: () => restartSimulation( { config, gpuCompute, positionVariable, velocityVariable } ) },
         'restart'
-    );
+    ).name( 'restart (R)' );
 
-    tooltips.attach( restart.domElement, 'Re-seed the simulation, applying any changed static parameters.' );
+    tooltips.attach( restart.domElement, 'Re-seed the simulation, applying any changed static parameters. (R)' );
 
     dynamicFolder.open();
     staticFolder.open();
