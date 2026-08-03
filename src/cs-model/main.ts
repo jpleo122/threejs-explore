@@ -58,7 +58,7 @@ const PARAMS: Record<keyof FlockConfig, ParamSpec> = {
             Scales how strongly each particle is pulled toward its neighbours' velocities. Larger values flock harder and faster.`
     },
     beta: {
-        value: 0.45, min: 0.0, max: 2.0, step: 0.01,
+        value: 0.1, min: 0.0, max: 2.0, step: 0.01,
         name: "β",
         description: `Decay exponent <math><mi>&#946;</mi></math> in the interaction weight
             ${ WEIGHT }
@@ -491,7 +491,8 @@ function initGUI( { config, gpuCompute, positionVariable, velocityVariable }: In
     description.innerHTML = `A simulation based on <a href="https://people.mpi-inf.mpg.de/~mehlhorn/SeminarEvolvability/CuckerSmale.pdf"><em>Cucker&#8211;Smale flocking.</em></a>. 
         Each particle steers toward a
         weighted average of its neighbours' velocities.
-        Hover a parameter for its role; press <b>R</b> to restart.`;
+        Hover a parameter for its role; press <b>R</b> to restart.
+        Scroll to Zoom. Click and drag to move camera around center.`;
     gui.$children.prepend( description );
 
     const addSlider = ( folder: GUI, key: keyof FlockConfig ) => {
