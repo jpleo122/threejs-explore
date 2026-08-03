@@ -12,6 +12,7 @@ precision highp float;
 
 uniform float K;
 uniform float beta;
+uniform float sigma;
 uniform float deltaDenominator;
 uniform float sphericalBounds;
 
@@ -19,7 +20,7 @@ const float width = resolution.x;
 const float height = resolution.y;
 
 float weight(float r) {
-    return K / pow((1.0 + r), beta);
+    return K / pow((pow(sigma, 2.0) + r), beta);
 }
 
 float communication_coef( vec3 pos_i, vec3 pos_j ) {

@@ -15,6 +15,7 @@ import type { Project } from '../projects';
 type FlockConfig = {
     K: number,
     beta: number,
+    sigma: number,
     width: number,
     particleRadius: number,
     radius: number,
@@ -38,12 +39,12 @@ type ParamSpec = {
 
 const WEIGHT = `
     <math display="block">
-      <mi>a</mi><mo stretchy="false">(</mo><mi>r</mi><mo stretchy="false">)</mo><mo>=</mo>
+      <mi>a</mi><mo stretchy="false">(</mo><mi>y</mi><mo stretchy="false">)</mo><mo>=</mo>
       <mfrac>
         <mi>K</mi>
         <msup>
           <mrow>
-            <mo>(</mo><mn>1</mn><mo>+</mo><msup><mi>r</mi><mn>2</mn></msup><mo>)</mo>
+            <mo>(</mo><msup><mi>σ</mi><mn>2</mn></msup><mo>+</mo><mi>y</mi><mo>)</mo>
           </mrow>
           <mi>&#946;</mi>
         </msup>
@@ -63,10 +64,16 @@ const PARAMS: Record<keyof FlockConfig, ParamSpec> = {
             ${ WEIGHT }
             Sets how fast influence falls off with the distance <math><mi>r</mi></math> between two particles.`
     },
+    sigma: {
+        value: 1, min: 0.05, max: 10, step: 0.05,
+        name: "σ",
+        description: `Constant in the denominator of the interaction weight. ${ WEIGHT }`
+    },
     width: {
         value: 64, min: 10, max: 80, step: 1,
+        name: "GPU Texture Width",
         description: `<math display="block">
-              <mi>particleCount</mi><mo>=</mo><msup><mi>width</mi><mn>2</mn></msup>
+              <mi>particleCount</mi><mo>=</mo><msup><mi>GPU Texture Width</mi><mn>2</mn></msup>
             </math>`
     },
     particleRadius: {
@@ -416,6 +423,7 @@ function initComputeRenderer( { config, renderer }: InitComputeRendererProps): I
     velocityUniforms[ 'simulationRadius' ] = { value: config.radius };
     velocityUniforms[ 'K' ] = { value: config.K };
     velocityUniforms[ 'beta' ] = { value: config.beta };
+    velocityUniforms[ 'sigma' ] = { value: config.sigma };
     velocityUniforms[ 'deltaDenominator' ] = { value: config.deltaDenominator };
     velocityUniforms[ 'sphericalBounds' ] = { value: config.radius * config.sphericalBoundMultiplier };
 
@@ -458,6 +466,7 @@ function restartSimulation( { config, gpuCompute, positionVariable, velocityVari
     velocityUniforms[ 'simulationRadius' ].value = config.radius;
     velocityUniforms[ 'K' ].value = config.K;
     velocityUniforms[ 'beta' ].value = config.beta;
+    velocityUniforms[ 'sigma' ].value = config.sigma;
     velocityUniforms[ 'sphericalBounds' ].value = config.radius * config.sphericalBoundMultiplier;
 
     return { texturePosition, textureVelocity };
@@ -466,7 +475,7 @@ function restartSimulation( { config, gpuCompute, positionVariable, velocityVari
 const DYNAMIC_KEYS = [ 'deltaDenominator' ] as const;
 
 const STATIC_KEYS = [
-    'K', 'beta', 'width', 'particleRadius', 'radius', 'height', 'exponent',
+    'K', 'beta', 'sigma', 'width', 'particleRadius', 'radius', 'height', 'exponent',
     'initMaxVelocity', 'velocityExponent', 'randVelocity', 'sphericalBoundMultiplier'
 ] as const;
 
