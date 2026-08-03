@@ -484,6 +484,16 @@ function initGUI( { config, gpuCompute, positionVariable, velocityVariable }: In
     const gui = new GUI( { width: 280 } );
     const tooltips = createTooltips();
 
+    const description = document.createElement( 'div' );
+    description.style.cssText =
+        'padding:8px 10px;border-bottom:1px solid var(--widget-color);' +
+        'line-height:1.5;user-select:text;-webkit-user-select:text';
+    description.innerHTML = `A simulation based on <a href="https://people.mpi-inf.mpg.de/~mehlhorn/SeminarEvolvability/CuckerSmale.pdf"><em>Cucker&#8211;Smale flocking.</em></a>. 
+        Each particle steers toward a
+        weighted average of its neighbours' velocities.
+        Hover a parameter for its role; press <b>R</b> to restart.`;
+    gui.$children.prepend( description );
+
     const addSlider = ( folder: GUI, key: keyof FlockConfig ) => {
         const { min, max, step, description, name } = PARAMS[ key ];
         const controller = folder.add( 
