@@ -1,9 +1,25 @@
+export type ParamSpec = {
+  value: number
+  description: string
+  min?: number
+  max?: number
+  step?: number
+  name?: string
+  live?: boolean
+}
+
+export type Params = Record<string, ParamSpec>
+
 export type Project = {
   dispose: () => void
+  setParam?: (key: string, value: number) => void
+  restart?: () => void
 }
 
 export type ProjectModule = {
-  start: (container: HTMLElement) => Project
+  start: (container: HTMLElement, values: Record<string, number>) => Project
+  params?: Params
+  description?: string
 }
 
 type ProjectEntry = {
@@ -20,4 +36,10 @@ export const projects: Record<string, ProjectEntry> = {
     title: 'Particles',
     load: () => import('./particles/main'),
   },
+}
+
+export function defaultValues(params: Params = {}) {
+  return Object.fromEntries(
+    Object.entries(params).map(([key, spec]) => [key, spec.value]),
+  )
 }
