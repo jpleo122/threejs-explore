@@ -2,14 +2,12 @@ import * as THREE from 'three'
 import { GPUComputationRenderer, Variable } from 'three/addons/misc/GPUComputationRenderer.js';
 import Stats from 'three/addons/libs/stats.module.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import particleFragmentShader from './shaders/particles.frag';
 import particleVertexShader from './shaders/particles.vert';
 import positionShader from './shaders/position.frag';
 import velocityShader from './shaders/velocity.frag';
 import { disposeRenderer, disposeScene } from '../dispose';
-import { createTooltips, type Tooltips } from '../components/tooltip';
-import type { Project } from '../projects';
+import type { ParamSpec, Project } from '../projects';
 
 /* Cucker, F. & Smale, S. (2007), "Emergent Behavior in Flocks". */
 type FlockConfig = {
@@ -28,15 +26,6 @@ type FlockConfig = {
     sphericalBoundMultiplier: number
 }
 
-type ParamSpec = {
-    value: number,
-    description: string,
-    min?: number,
-    max?: number,
-    step?: number,
-    name?: string
-}
-
 const WEIGHT = `
     <math display="block">
       <mi>a</mi><mo stretchy="false">(</mo><mi>y</mi><mo stretchy="false">)</mo><mo>=</mo>
@@ -51,7 +40,7 @@ const WEIGHT = `
       </mfrac>
     </math>`
 
-const PARAMS: Record<keyof FlockConfig, ParamSpec> = {
+export const params: Record<keyof FlockConfig, ParamSpec> = {
     K: {
         value: 5, min: 1, max: 100, step: 1,
         description: `${ WEIGHT }
@@ -117,6 +106,7 @@ const PARAMS: Record<keyof FlockConfig, ParamSpec> = {
     },
     deltaDenominator: {
         value: 60, min: 10, max: 600, step: 1,
+        live: true,
         name: "Integration Timestep",
         description: `<math><mi>&#948;</mi><mo>=</mo><mfrac><mn>1</mn><mi>Integration Timestep</mi></mfrac></math>.
             Higher means smaller steps: a slower but more stable simulation.`
@@ -129,6 +119,11 @@ const PARAMS: Record<keyof FlockConfig, ParamSpec> = {
             flock is free to drift away.`
     }
 }
+
+export const description = `A simulation based on <a href="https://people.mpi-inf.mpg.de/~mehlhorn/SeminarEvolvability/CuckerSmale.pdf"><em>Cucker&#8211;Smale flocking</em></a>.
+    Each particle steers toward a weighted average of its neighbours' velocities.
+    Hover a parameter for its role; press <b>R</b> to restart.
+    Scroll to zoom. Click and drag to move the camera around the center.`
 
 type RenderProps = {
     renderer: THREE.WebGLRenderer
@@ -203,28 +198,16 @@ type RestartSimulation = {
     textureVelocity: THREE.DataTexture
 }
 
-type InitGUIProps = {
-    config: FlockConfig,
-    gpuCompute: GPUComputationRenderer,
-    positionVariable: Variable,
-    velocityVariable: Variable
-}
+export function start(container: HTMLElement, values: Record<string, number>): Project {
 
-type InitGUI = {
-    gui: GUI,
-    tooltips: Tooltips
-}
-
-export function start(container: HTMLElement): Project {
-
-    const CONFIG = Object.fromEntries(
-        Object.entries( PARAMS ).map( ( [ key, spec ] ) => [ key, spec.value ] )
-    ) as FlockConfig;
+    const CONFIG = { ...values } as FlockConfig;
 
     const canvas = document.createElement('canvas');
     container.appendChild( canvas );
 
     const stats = new Stats();
+    stats.dom.style.top = 'auto';
+    stats.dom.style.bottom = '0';
     container.appendChild( stats.dom );
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
@@ -248,22 +231,11 @@ export function start(container: HTMLElement): Project {
 
     const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
 
-    const { gui, tooltips } = initGUI({ config: CONFIG, gpuCompute, positionVariable, velocityVariable });
     dynamicValuesChanger({ config: CONFIG, positionVariable, velocityVariable });
 
     const listeners = new AbortController();
 
     window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }), { signal: listeners.signal })
-
-    window.addEventListener('keydown', ( event ) => {
-
-        if ( event.key !== 'r' && event.key !== 'R' ) return;
-        if ( event.metaKey || event.ctrlKey || event.altKey ) return;
-        if ( event.target instanceof HTMLInputElement ) return;
-
-        restartSimulation( { config: CONFIG, gpuCompute, positionVariable, velocityVariable } );
-
-    }, { signal: listeners.signal })
 
     renderer.setAnimationLoop( () => animate({
         renderer,
@@ -277,11 +249,19 @@ export function start(container: HTMLElement): Project {
     }) );
 
     return {
+        setParam( key, value ) {
+            if ( !( key in params ) ) return;
+            CONFIG[ key as keyof FlockConfig ] = value;
+            if ( params[ key as keyof FlockConfig ].live ) {
+                dynamicValuesChanger( { config: CONFIG, positionVariable, velocityVariable } );
+            }
+        },
+        restart() {
+            restartSimulation( { config: CONFIG, gpuCompute, positionVariable, velocityVariable } );
+        },
         dispose() {
             listeners.abort();
             controls.dispose();
-            tooltips.dispose();
-            gui.destroy();
             gpuCompute.dispose();
             disposeScene( scene );
             disposeRenderer( renderer );
@@ -470,64 +450,6 @@ function restartSimulation( { config, gpuCompute, positionVariable, velocityVari
     velocityUniforms[ 'sphericalBounds' ].value = config.radius * config.sphericalBoundMultiplier;
 
     return { texturePosition, textureVelocity };
-}
-
-const DYNAMIC_KEYS = [ 'deltaDenominator' ] as const;
-
-const STATIC_KEYS = [
-    'K', 'beta', 'sigma', 'width', 'particleRadius', 'radius', 'height', 'exponent',
-    'initMaxVelocity', 'velocityExponent', 'randVelocity', 'sphericalBoundMultiplier'
-] as const;
-
-function initGUI( { config, gpuCompute, positionVariable, velocityVariable }: InitGUIProps): InitGUI {
-
-    const gui = new GUI( { width: 280 } );
-    const tooltips = createTooltips();
-
-    const description = document.createElement( 'div' );
-    description.style.cssText =
-        'padding:8px 10px;border-bottom:1px solid var(--widget-color);' +
-        'line-height:1.5;user-select:text;-webkit-user-select:text';
-    description.innerHTML = `A simulation based on <a href="https://people.mpi-inf.mpg.de/~mehlhorn/SeminarEvolvability/CuckerSmale.pdf"><em>Cucker&#8211;Smale flocking.</em></a>. 
-        Each particle steers toward a
-        weighted average of its neighbours' velocities.
-        Hover a parameter for its role; press <b>R</b> to restart.
-        Scroll to Zoom. Click and drag to move camera around center.`;
-    gui.$children.prepend( description );
-
-    const addSlider = ( folder: GUI, key: keyof FlockConfig ) => {
-        const { min, max, step, description, name } = PARAMS[ key ];
-        const controller = folder.add( 
-            config, key, min, max, step 
-        ).name(name ?? key);
-
-        tooltips.attach( controller.domElement, description );
-
-        return controller;
-    };
-
-    const dynamicFolder = gui.addFolder( 'Dynamic parameters' );
-
-    for ( const key of DYNAMIC_KEYS ) {
-        addSlider( dynamicFolder, key )
-            .onChange( () => dynamicValuesChanger( { config, positionVariable, velocityVariable } ) );
-    }
-
-    const staticFolder = gui.addFolder( 'Static parameters' );
-
-    for ( const key of STATIC_KEYS ) addSlider( staticFolder, key );
-
-    const restart = staticFolder.add(
-        { restart: () => restartSimulation( { config, gpuCompute, positionVariable, velocityVariable } ) },
-        'restart'
-    ).name( 'restart (R)' );
-
-    tooltips.attach( restart.domElement, 'Re-seed the simulation, applying any changed static parameters. (R)' );
-
-    dynamicFolder.open();
-    staticFolder.open();
-
-    return { gui, tooltips };
 }
 
 function onResize({ renderer, camera }: ResizeProps) {

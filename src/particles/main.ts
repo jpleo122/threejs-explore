@@ -94,6 +94,8 @@ export function start(container: HTMLElement): Project {
     container.appendChild( canvas );
 
     const stats = new Stats();
+    stats.dom.style.top = 'auto';
+    stats.dom.style.bottom = '0';
     container.appendChild( stats.dom );
 
     const clock = new THREE.Clock();
