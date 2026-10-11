@@ -1,12 +1,13 @@
 import * as THREE from 'three'
 import { GPUComputationRenderer, Variable } from 'three/addons/misc/GPUComputationRenderer.js';
-import Stats from 'three/addons/libs/stats.module.js';
+import type Stats from 'three/addons/libs/stats.module.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import particleFragmentShader from './shaders/particles.frag';
 import particleVertexShader from './shaders/particles.vert';
 import positionShader from './shaders/position.frag';
 import velocityShader from './shaders/velocity.frag';
 import { disposeRenderer, disposeScene } from '../dispose';
+import { createStats } from '../stats';
 import type { ParamSpec, Project } from '@/projects';
 
 /* Cucker, F. & Smale, S. (2007), "Emergent Behavior in Flocks". */
@@ -138,7 +139,7 @@ type RenderProps = {
 }
 
 type AnimateProps = RenderProps & {
-    stats: Stats
+    stats: Stats | null
 }
 
 type ResizeProps = {
@@ -203,10 +204,7 @@ export function start(container: HTMLElement, values: Record<string, number>): P
     const canvas = document.createElement('canvas');
     container.appendChild( canvas );
 
-    const stats = new Stats();
-    stats.dom.style.top = 'auto';
-    stats.dom.style.bottom = '0';
-    container.appendChild( stats.dom );
+    const stats = createStats( container );
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -262,7 +260,7 @@ export function start(container: HTMLElement, values: Record<string, number>): P
             gpuCompute.dispose();
             disposeScene( scene );
             disposeRenderer( renderer );
-            stats.dom.remove();
+            stats?.dom.remove();
         }
     }
 }
@@ -446,7 +444,7 @@ function onResize({ renderer, camera }: ResizeProps) {
 
 function animate({ stats, ...rest }: AnimateProps) {
     render(rest)
-    stats.update()
+    stats?.update()
 }
 
 function render({ renderer, scene, camera, gpuCompute, particleUniforms, positionVariable, velocityVariable }: RenderProps) {
