@@ -1,8 +1,6 @@
 // For PI declaration:
 // #include <common>
 
-#define delta ( 1.0 / 60.0 )
-
 // Injected by GPUComputationRenderer / three at runtime; guarded so editors resolve them.
 #ifndef resolution
 #define resolution vec2( 1.0 )
@@ -15,11 +13,14 @@ precision highp float;
 // uniform float gravityConstant;
 // uniform float density;
 uniform float simulationRadius;
+uniform float deltaDenominator;
 
 const float width = resolution.x;
 const float height = resolution.y;
 
 void main()	{
+
+    float delta = 1.0 / deltaDenominator;
 
     vec2 uv = gl_FragCoord.xy / resolution.xy;
     float idParticle = uv.y * resolution.x + uv.x;
