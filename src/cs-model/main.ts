@@ -233,8 +233,6 @@ export function start(container: HTMLElement, values: Record<string, number>): P
 
     const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
 
-    dynamicValuesChanger({ config: CONFIG, positionVariable, velocityVariable });
-
     const listeners = new AbortController();
 
     window.addEventListener('resize', () => onResize({ renderer, camera, particleUniforms }), { signal: listeners.signal })

@@ -7,7 +7,7 @@ import particleVertexShader from './shaders/particles.vert';
 import positionShader from './shaders/position.frag';
 import velocityShader from './shaders/velocity.frag';
 import { disposeRenderer, disposeScene } from '../dispose';
-import type { Project } from '../projects';
+import type { ParamSpec, Project } from '../projects';
 
 
 type ParticleConfig = {
@@ -20,7 +20,8 @@ type ParticleConfig = {
     exponent: number, /* controls distribution of particles from center */
     velocity: number
     velocityExponent: number, /* controls distribution of velocities based on distance from center */
-    randVelocity: number
+    randVelocity: number,
+    deltaDenominator: number
 }
 
 type RenderProps = {
@@ -75,7 +76,38 @@ type FillTexturesProps = {
     textureVelocity: THREE.DataTexture
 }
 
-export function start(container: HTMLElement): Project {
+type RestartSimulationProps = {
+    config: ParticleConfig,
+    camera: THREE.PerspectiveCamera,
+    renderer: THREE.WebGLRenderer,
+    scene: THREE.Scene,
+    gpuCompute: GPUComputationRenderer
+}
+
+type DynamicValuesChangerProps = {
+    config: ParticleConfig,
+    positionVariable: Variable,
+    velocityVariable: Variable
+}
+
+export const params: Partial<Record<keyof ParticleConfig, ParamSpec>> = {
+    width: {
+        value: 64, min: 2, max: 100, step: 1,
+        name: "GPU Texture Width",
+        description: `<math display="block">
+              <mi>particleCount</mi><mo>=</mo><msup><mi>GPU Texture Width</mi><mn>2</mn></msup>
+            </math>`
+    },
+    deltaDenominator: {
+        value: 60, min: 10, max: 600, step: 1,
+        live: true,
+        name: "Integration Timestep",
+        description: `<math><mi>&#948;</mi><mo>=</mo><mfrac><mn>1</mn><mi>Integration Timestep</mi></mfrac></math>.
+            Higher means smaller steps: a slower but more stable simulation.`
+    }
+}
+
+export function start(container: HTMLElement, values: Record<string, number>): Project {
 
     const CONFIG: ParticleConfig = {
         width: 64,
@@ -87,7 +119,9 @@ export function start(container: HTMLElement): Project {
         exponent: 1,
         velocity: 70,
         velocityExponent: 0.001,
-        randVelocity: 0.001
+        randVelocity: 0.001,
+        deltaDenominator: 60,
+        ...values
     }
 
     const canvas = document.createElement('canvas');
@@ -117,9 +151,9 @@ export function start(container: HTMLElement): Project {
     controls.minDistance = 0;
     controls.maxDistance = 1000;
 
-    const { scene, particleUniforms } = initParticles({ config: CONFIG, camera });
+    let { scene, particleUniforms } = initParticles({ config: CONFIG, camera });
 
-    const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
+    let { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
 
     const listeners = new AbortController();
 
@@ -138,6 +172,17 @@ export function start(container: HTMLElement): Project {
     }) );
 
     return {
+        setParam( key, value ) {
+            if ( !( key in params ) ) return;
+            CONFIG[ key as keyof ParticleConfig ] = value;
+            if ( params[ key as keyof ParticleConfig ]?.live ) {
+                dynamicValuesChanger( { config: CONFIG, positionVariable, velocityVariable } );
+            }
+        },
+        restart() {
+            ( { scene, particleUniforms, gpuCompute, positionVariable, velocityVariable } =
+                restartSimulation( { config: CONFIG, camera, renderer, scene, gpuCompute } ) );
+        },
         dispose() {
             listeners.abort();
             controls.dispose();
@@ -290,6 +335,9 @@ function initComputeRenderer( { config, renderer }: InitComputeRendererProps): I
 
     // velocityUniforms[ 'gravityConstant' ] = { value: 0.0 };
     velocityUniforms[ 'simulationRadius' ] = { value: config.radius };
+    velocityUniforms[ 'deltaDenominator' ] = { value: config.deltaDenominator };
+
+    positionVariable.material.uniforms[ 'deltaDenominator' ] = { value: config.deltaDenominator };
 
     const error = gpuCompute.init();
 
@@ -302,6 +350,25 @@ function initComputeRenderer( { config, renderer }: InitComputeRendererProps): I
         velocityVariable,
         positionVariable
     }
+}
+
+
+function dynamicValuesChanger( { config, positionVariable, velocityVariable }: DynamicValuesChangerProps) {
+
+    velocityVariable.material.uniforms[ 'deltaDenominator' ].value = config.deltaDenominator;
+    positionVariable.material.uniforms[ 'deltaDenominator' ].value = config.deltaDenominator;
+}
+
+
+function restartSimulation( { config, camera, renderer, scene, gpuCompute }: RestartSimulationProps): InitParticle & InitComputeRenderer {
+
+    gpuCompute.dispose();
+    disposeScene( scene );
+
+    return {
+        ...initParticles( { config, camera } ),
+        ...initComputeRenderer( { config, renderer } )
+    };
 }
 
 function getCameraConstant( camera: THREE.PerspectiveCamera ) {
