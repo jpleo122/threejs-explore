@@ -30,11 +30,11 @@ type ProjectEntry = {
 export const projects: Record<string, ProjectEntry> = {
   'cs-model': {
     title: 'Cucker-Smale flocking',
-    load: () => import('./cs-model/main'),
+    load: () => import('./sims/cs-model/main'),
   },
   particles: {
     title: 'Particles',
-    load: () => import('./particles/main'),
+    load: () => import('./sims/particles/main'),
   },
 }
 
