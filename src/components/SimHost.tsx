@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ControlPanel } from '@/components/ControlPanel'
+import { ControlPanel } from '@/components/control-panel/ControlPanel'
 import { defaultValues, projects, type Project, type ProjectModule } from '@/projects'
 
 type Loaded = {

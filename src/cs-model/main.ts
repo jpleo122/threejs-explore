@@ -122,8 +122,10 @@ export const params: Record<keyof FlockConfig, ParamSpec> = {
 
 export const description = `A simulation based on <a href="https://people.mpi-inf.mpg.de/~mehlhorn/SeminarEvolvability/CuckerSmale.pdf"><em>Cucker&#8211;Smale flocking</em></a>.
     Each particle steers toward a weighted average of its neighbours' velocities.
-    Hover a parameter for its role; press <b>R</b> to restart.
-    Scroll to zoom. Click and drag to move the camera around the center.`
+    <span class="pointer-coarse:hidden">Hover a parameter for its role; press <b>R</b> to restart.
+    Scroll to zoom. Click and drag to move the camera around the center.</span>
+    <span class="hidden pointer-coarse:inline">Tap a parameter for its role.
+    Pinch to zoom. Drag to move the camera around the center.</span>`
 
 type RenderProps = {
     renderer: THREE.WebGLRenderer
