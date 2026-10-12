@@ -244,6 +244,7 @@ function initParticles( { config, camera }: InitParticleProps): InitParticle {
     const scene = new THREE.Scene()
     scene.add( particles );
 
+    // pivot point for reference
     const pivotGeometry = new THREE.BufferGeometry();
     pivotGeometry.setAttribute( 'position', new THREE.Float32BufferAttribute( [ 0, 0, 0 ], 3 ) );
     const pivot = new THREE.Points(
@@ -290,9 +291,13 @@ function fillTextures( { config, texturePosition, textureVelocity }: FillTexture
 
             x = ( Math.random() * 2 - 1 );
             z = ( Math.random() * 2 - 1 );
+            // x = ( Math.random() * 0.8 + 0.2 ) * Math.sign(Math.random() - 0.5);
+            // z = ( Math.random() * 0.8 + 0.2 ) * Math.sign(Math.random() - 0.5);
+            // x = ( Math.random() * 0.8 + 0.2 ) * Math.sign(Math.random() - 0.5);
+            // z = ( Math.random() * 0.8 + 0.2 ) * Math.sign(Math.random() - 0.5);
             rr = x * x + z * z;
 
-        } while ( rr > 1 );
+        } while ( rr > 1 || rr < 0.005 );
 
         rr = Math.sqrt( rr );
 

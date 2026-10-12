@@ -119,7 +119,12 @@ void main()	{
         // }
 
         // Dynamics
-        vel += delta * gravityConstant * sin_theta * tangent;
+        // vec3 accel_gravity = gravityConstant * sin_theta * tangent;
+        vec3 accel_gravity = (neg_y * gravityConstant) - dot(neg_y * gravityConstant, normlized_pos) * normlized_pos;
+        vec3 accel_rod = (dot(vel, vel) / length(pos)) * normlized_pos;
+        vec3 acceleration = accel_gravity - accel_rod;
+
+        vel += delta * acceleration;
     }
 
     gl_FragColor = vec4( vel, mass );
