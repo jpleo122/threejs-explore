@@ -36,6 +36,10 @@ export const projects: Record<string, ProjectEntry> = {
     title: 'Particles',
     load: () => import('./sims/particles/main'),
   },
+  'pendulums': {
+    title: 'Pendulums',
+    load: () => import('./sims/pendulums/main'),
+  },
 }
 
 export function defaultValues(params: Params = {}) {
