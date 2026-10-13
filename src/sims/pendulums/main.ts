@@ -19,7 +19,8 @@ type PendulumConfig = {
     seedExponent: number,
     gravityConstant: number,
     density: number,
-    deltaDenominator: number
+    deltaDenominator: number,
+    dampingFactor: number
 }
 
 type RenderProps = {
@@ -90,7 +91,7 @@ type DynamicValuesChangerProps = {
 
 export const params: Partial<Record<keyof PendulumConfig, ParamSpec>> = {
     width: {
-        value: 10, min: 1, max: 100, step: 1,
+        value: 400, min: 1, max: 750, step: 1,
         name: "GPU Texture Width",
         description: `<math display="block">
               <mi>particleCount</mi><mo>=</mo><msup><mi>GPU Texture Width</mi><mn>2</mn></msup>
@@ -108,6 +109,18 @@ export const params: Partial<Record<keyof PendulumConfig, ParamSpec>> = {
         live: true,
         name: "Gravity Constant",
         description: `How hard we fall`
+    },
+    dampingFactor: {
+        value: 0, min: 0, max: 4, step: 0.25,
+        live: true,
+        name: "Damping",
+        description: `Chaos`
+    },
+    maxParticleMass: {
+        value: 100, min: 50, max: 1000, step: 50,
+        live: false,
+        name: "MaxParticleMass",
+        description: `Heavy`
     }
 }
 
@@ -122,6 +135,7 @@ export function start(container: HTMLElement, values: Record<string, number>): P
         gravityConstant: 10,
         density: 10,
         deltaDenominator: 60,
+        dampingFactor: 0,
         ...values
     }
 
@@ -342,6 +356,7 @@ function initComputeRenderer( { config, renderer }: InitComputeRendererProps): I
     velocityUniforms[ 'deltaDenominator' ] = { value: config.deltaDenominator };
     velocityUniforms[ 'gravityConstant' ] = { value: config.gravityConstant };
     velocityUniforms[ 'density' ] = { value: config.density };
+    velocityUniforms[ 'dampingFactor' ] = { value: config.dampingFactor };
 
     positionVariable.material.uniforms[ 'deltaDenominator' ] = { value: config.deltaDenominator };
 
@@ -364,6 +379,7 @@ function dynamicValuesChanger( { config, positionVariable, velocityVariable }: D
     positionVariable.material.uniforms[ 'deltaDenominator' ].value = config.deltaDenominator;
     velocityVariable.material.uniforms[ 'deltaDenominator' ].value = config.deltaDenominator;
     velocityVariable.material.uniforms[ 'gravityConstant' ].value = config.gravityConstant;
+    velocityVariable.material.uniforms[ 'dampingFactor' ].value = config.dampingFactor;
 }
 
 

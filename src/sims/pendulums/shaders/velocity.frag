@@ -14,6 +14,7 @@ precision highp float;
 uniform float deltaDenominator;
 uniform float gravityConstant;
 uniform float density;
+uniform float dampingFactor;
 
 // const float width = resolution.x;
 // const float height = resolution.y;
@@ -120,11 +121,22 @@ void main()	{
 
         // Dynamics
         // vec3 accel_gravity = gravityConstant * sin_theta * tangent;
-        vec3 accel_gravity = (neg_y * gravityConstant) - dot(neg_y * gravityConstant, normlized_pos) * normlized_pos;
-        vec3 accel_rod = (dot(vel, vel) / length(pos)) * normlized_pos;
+        // position.frag is moving pos by the old vel this frame; aim the following step back onto the circle
+        vec3 posNext = pos + vel * delta;
+        vec3 rNext = normalize(posNext);
+        float rodLength = length(posNext);
+
+        vec3 accel_gravity = (neg_y * gravityConstant) - dot(neg_y * gravityConstant, rNext) * rNext;
+        vec3 accel_rod = (dot(vel, vel) / rodLength) * rNext;
         vec3 acceleration = accel_gravity - accel_rod;
 
         vel += delta * acceleration;
+
+        vec3 velTangent = vel - dot(vel, rNext) * rNext;
+        float radialStep = sqrt(max(rodLength * rodLength - dot(velTangent, velTangent) * delta * delta, 0.0)) - length(posNext);
+        vel = velTangent + (radialStep / delta) * rNext;
+
+        vel -= (dampingFactor / mass) * vel;
     }
 
     gl_FragColor = vec4( vel, mass );
