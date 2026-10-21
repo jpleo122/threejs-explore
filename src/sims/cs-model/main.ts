@@ -1,13 +1,14 @@
 import * as THREE from 'three'
 import { GPUComputationRenderer, Variable } from 'three/addons/misc/GPUComputationRenderer.js';
-import Stats from 'three/addons/libs/stats.module.js';
+import type Stats from 'three/addons/libs/stats.module.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import particleFragmentShader from './shaders/particles.frag';
 import particleVertexShader from './shaders/particles.vert';
 import positionShader from './shaders/position.frag';
 import velocityShader from './shaders/velocity.frag';
 import { disposeRenderer, disposeScene } from '../dispose';
-import type { ParamSpec, Project } from '../projects';
+import { createStats } from '../stats';
+import type { ParamSpec, Project } from '@/projects';
 
 /* Cucker, F. & Smale, S. (2007), "Emergent Behavior in Flocks". */
 type FlockConfig = {
@@ -138,7 +139,7 @@ type RenderProps = {
 }
 
 type AnimateProps = RenderProps & {
-    stats: Stats
+    stats: Stats | null
 }
 
 type ResizeProps = {
@@ -190,14 +191,10 @@ type DynamicValuesChanger = {
 
 type RestartSimulationProps = {
     config: FlockConfig,
-    gpuCompute: GPUComputationRenderer,
-    positionVariable: Variable,
-    velocityVariable: Variable
-}
-
-type RestartSimulation = {
-    texturePosition: THREE.DataTexture,
-    textureVelocity: THREE.DataTexture
+    camera: THREE.PerspectiveCamera,
+    renderer: THREE.WebGLRenderer,
+    scene: THREE.Scene,
+    gpuCompute: GPUComputationRenderer
 }
 
 export function start(container: HTMLElement, values: Record<string, number>): Project {
@@ -207,10 +204,7 @@ export function start(container: HTMLElement, values: Record<string, number>): P
     const canvas = document.createElement('canvas');
     container.appendChild( canvas );
 
-    const stats = new Stats();
-    stats.dom.style.top = 'auto';
-    stats.dom.style.bottom = '0';
-    container.appendChild( stats.dom );
+    const stats = createStats( container );
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -229,11 +223,9 @@ export function start(container: HTMLElement, values: Record<string, number>): P
     controls.minDistance = 0;
     controls.maxDistance = 1000;
 
-    const { scene, particleUniforms } = initParticles({ config: CONFIG, camera });
+    let { scene, particleUniforms } = initParticles({ config: CONFIG, camera });
 
-    const { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
-
-    dynamicValuesChanger({ config: CONFIG, positionVariable, velocityVariable });
+    let { gpuCompute, positionVariable, velocityVariable } = initComputeRenderer({ config:CONFIG, renderer});
 
     const listeners = new AbortController();
 
@@ -259,7 +251,8 @@ export function start(container: HTMLElement, values: Record<string, number>): P
             }
         },
         restart() {
-            restartSimulation( { config: CONFIG, gpuCompute, positionVariable, velocityVariable } );
+            ( { scene, particleUniforms, gpuCompute, positionVariable, velocityVariable } =
+                restartSimulation( { config: CONFIG, camera, renderer, scene, gpuCompute } ) );
         },
         dispose() {
             listeners.abort();
@@ -267,7 +260,7 @@ export function start(container: HTMLElement, values: Record<string, number>): P
             gpuCompute.dispose();
             disposeScene( scene );
             disposeRenderer( renderer );
-            stats.dom.remove();
+            stats?.dom.remove();
         }
     }
 }
@@ -432,26 +425,15 @@ function dynamicValuesChanger( { config, positionVariable, velocityVariable }: D
     return { deltaDenominator: config.deltaDenominator };
 }
 
-function restartSimulation( { config, gpuCompute, positionVariable, velocityVariable }: RestartSimulationProps): RestartSimulation {
+function restartSimulation( { config, camera, renderer, scene, gpuCompute }: RestartSimulationProps): InitParticle & InitComputeRenderer {
 
-    const texturePosition = gpuCompute.createTexture();
-    const textureVelocity = gpuCompute.createTexture();
+    gpuCompute.dispose();
+    disposeScene( scene );
 
-    fillTextures( { config, texturePosition, textureVelocity } );
-
-    gpuCompute.renderTexture( texturePosition, positionVariable.renderTargets[ 0 ] );
-    gpuCompute.renderTexture( texturePosition, positionVariable.renderTargets[ 1 ] );
-    gpuCompute.renderTexture( textureVelocity, velocityVariable.renderTargets[ 0 ] );
-    gpuCompute.renderTexture( textureVelocity, velocityVariable.renderTargets[ 1 ] );
-
-    const velocityUniforms = velocityVariable.material.uniforms;
-    velocityUniforms[ 'simulationRadius' ].value = config.radius;
-    velocityUniforms[ 'K' ].value = config.K;
-    velocityUniforms[ 'beta' ].value = config.beta;
-    velocityUniforms[ 'sigma' ].value = config.sigma;
-    velocityUniforms[ 'sphericalBounds' ].value = config.radius * config.sphericalBoundMultiplier;
-
-    return { texturePosition, textureVelocity };
+    return {
+        ...initParticles( { config, camera } ),
+        ...initComputeRenderer( { config, renderer } )
+    };
 }
 
 function onResize({ renderer, camera }: ResizeProps) {
@@ -462,7 +444,7 @@ function onResize({ renderer, camera }: ResizeProps) {
 
 function animate({ stats, ...rest }: AnimateProps) {
     render(rest)
-    stats.update()
+    stats?.update()
 }
 
 function render({ renderer, scene, camera, gpuCompute, particleUniforms, positionVariable, velocityVariable }: RenderProps) {
