@@ -14,6 +14,7 @@ type PendulumConfig = {
     width: number, /* width of gpu texture for particles, particle count = width ** 2 */
     // connectionCount
     maxParticleMass: number,
+    randomWeightParticleMass: number,
     particleMassExponent: number,
     seedRadius: number,
     seedExponent: number,
@@ -91,7 +92,7 @@ type DynamicValuesChangerProps = {
 
 export const params: Partial<Record<keyof PendulumConfig, ParamSpec>> = {
     width: {
-        value: 400, min: 1, max: 750, step: 1,
+        value: 200, min: 1, max: 400, step: 1,
         name: "GPU Texture Width",
         description: `<math display="block">
               <mi>particleCount</mi><mo>=</mo><msup><mi>GPU Texture Width</mi><mn>2</mn></msup>
@@ -108,30 +109,39 @@ export const params: Partial<Record<keyof PendulumConfig, ParamSpec>> = {
         value: 10, min: 1, max: 100, step: 1,
         live: true,
         name: "Gravity Constant",
-        description: `How hard we fall`
+        description: `A constant applied in the -y direction.`
     },
     dampingFactor: {
-        value: 0, min: 0, max: 4, step: 0.25,
+        value: 0, min: 0, max: 4, step: 0.1,
         live: true,
         name: "Damping",
-        description: `Chaos`
+        description: `The coefficient, d, of the drag on velocity defined by (-d / mass) * velocity`
     },
     maxParticleMass: {
         value: 100, min: 50, max: 1000, step: 50,
         live: false,
-        name: "MaxParticleMass",
-        description: `Heavy`
+        name: "Max Particle Mass",
+        description: `The max of the inital mass distribution.`
+    },
+    randomWeightParticleMass: {
+        value: 0, min: 0, max: 0.9, step: 0.1,
+        live: false,
+        name: "Mass Randomness Weight",
+        description: `The minimum bound of the inital mass distribution.`
     }
 }
+
+export const description = `A horde of simple gravity pendulums with optional parameters`;
 
 export function start(container: HTMLElement, values: Record<string, number>): Project {
 
     const CONFIG: PendulumConfig = {
         width: 1,
         maxParticleMass: 100,
-        particleMassExponent: 2,
-        seedRadius: 200,
-        seedExponent: 1,
+        randomWeightParticleMass: 1,
+        particleMassExponent: 1,
+        seedRadius: 300,
+        seedExponent: 0.5,
         gravityConstant: 10,
         density: 10,
         deltaDenominator: 60,
@@ -241,6 +251,7 @@ function initParticles( { config, camera }: InitParticleProps): InitParticle {
         'textureVelocity': { value: null },
         'cameraConstant': { value: getCameraConstant( camera ) },
         'density': { value: config.density },
+        'seedRadius': { value: config.seedRadius },
         'uTime': { value: 0.0 },
     };
 
@@ -258,27 +269,27 @@ function initParticles( { config, camera }: InitParticleProps): InitParticle {
     const scene = new THREE.Scene()
     scene.add( particles );
 
-    // pivot point for reference
-    const pivotGeometry = new THREE.BufferGeometry();
-    pivotGeometry.setAttribute( 'position', new THREE.Float32BufferAttribute( [ 0, 0, 0 ], 3 ) );
-    const pivot = new THREE.Points(
-        pivotGeometry,
-        new THREE.ShaderMaterial( {
-            uniforms: { size: { value: 8 * Math.min( window.devicePixelRatio, 2 ) } },
-            vertexShader: `
-                uniform float size;
-                void main() {
-                    gl_PointSize = size;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-                }`,
-            fragmentShader: `
-                void main() {
-                    if ( length( gl_PointCoord - 0.5 ) > 0.5 ) discard;
-                    gl_FragColor = vec4( 1.0, 0.27, 0.27, 1.0 );
-                }`
-        } )
-    );
-    scene.add( pivot );
+    // // pivot point for reference and debugging
+    // const pivotGeometry = new THREE.BufferGeometry();
+    // pivotGeometry.setAttribute( 'position', new THREE.Float32BufferAttribute( [ 0, 0, 0 ], 3 ) );
+    // const pivot = new THREE.Points(
+    //     pivotGeometry,
+    //     new THREE.ShaderMaterial( {
+    //         uniforms: { size: { value: 8 * Math.min( window.devicePixelRatio, 2 ) } },
+    //         vertexShader: `
+    //             uniform float size;
+    //             void main() {
+    //                 gl_PointSize = size;
+    //                 gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+    //             }`,
+    //         fragmentShader: `
+    //             void main() {
+    //                 if ( length( gl_PointCoord - 0.5 ) > 0.5 ) discard;
+    //                 gl_FragColor = vec4( 1.0, 0.27, 0.27, 1.0 );
+    //             }`
+    //     } )
+    // );
+    // scene.add( pivot );
 
     return {
         scene,
@@ -295,6 +306,7 @@ function fillTextures( { config, texturePosition, textureVelocity }: FillTexture
     const seedExponent = config.seedExponent;
     const maxParticleMass = config.maxParticleMass;
     const particleMassExponent = config.particleMassExponent;
+    const randomWeightParticleMass = config.randomWeightParticleMass;
 
     for ( let k = 0, kl = posArray.length; k < kl; k += 4 ) {
 
@@ -305,10 +317,6 @@ function fillTextures( { config, texturePosition, textureVelocity }: FillTexture
 
             x = ( Math.random() * 2 - 1 );
             z = ( Math.random() * 2 - 1 );
-            // x = ( Math.random() * 0.8 + 0.2 ) * Math.sign(Math.random() - 0.5);
-            // z = ( Math.random() * 0.8 + 0.2 ) * Math.sign(Math.random() - 0.5);
-            // x = ( Math.random() * 0.8 + 0.2 ) * Math.sign(Math.random() - 0.5);
-            // z = ( Math.random() * 0.8 + 0.2 ) * Math.sign(Math.random() - 0.5);
             rr = x * x + z * z;
 
         } while ( rr > 1 || rr < 0.005 );
@@ -320,7 +328,7 @@ function fillTextures( { config, texturePosition, textureVelocity }: FillTexture
         x *= rExp;
         z *= rExp;
 
-        const pMass = maxParticleMass + ( Math.random() * 2 - 1 ) * particleMassExponent;
+        const pMass = maxParticleMass * Math.pow((1-randomWeightParticleMass) + randomWeightParticleMass * Math.random(), particleMassExponent);
 
         // Fill in texture values
         posArray[ k + 0 ] = x;

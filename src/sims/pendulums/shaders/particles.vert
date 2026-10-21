@@ -7,14 +7,19 @@ uniform sampler2D textureVelocity;
 
 uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
+uniform mat4 viewMatrix;
 
 uniform float cameraConstant;
 uniform float density;
+uniform float seedRadius;
 // uniform float uTime;
 
 attribute vec2 uv;
 
 varying vec4 vColor;
+varying vec3 vLightDir;
+
+const vec3 lightDirection = vec3( 0.5, 1.0, 0.3 );
 
 float hash( float n ) {
     return fract( sin( n ) * 43758.5453123 );
@@ -45,19 +50,15 @@ void main() {
 
     vec4 mvPosition = modelViewMatrix * vec4( pos, 1.0 );
 
-    // float hue = clamp(
-    //     (
-    //         length(pos) / simulationRadius) + 
-    //         (((sin(uTime * 1.5) + 1.0) * 0.25) - 0.25
-    //     ),
-    //     0.0, 
-    //     1.0
-    // );
+    float hue = clamp(
+        (
+            (abs(pos.y) / seedRadius)
+        ),
+        0.0, 
+        1.0
+    );
 
-    // float alive = step( 0.0001, radius );
-    // vColor = vec4( hsv2rgb( vec3( hue, (70.0 / 255.0), 1.0 ) ), 1.0 );
-
-    vColor = vec4( vec3(1), 0.5 );
+    vColor = vec4( hsv2rgb( vec3( hue, (70.0 / 255.0), 1.0 ) ), 1.0 );
 
     // Apparent size in pixels
     if ( radius == 0.0 ) {
@@ -66,6 +67,8 @@ void main() {
     else {
         gl_PointSize = radius * cameraConstant / ( - mvPosition.z );
     }
+
+    vLightDir = normalize( mat3( viewMatrix ) * lightDirection );
 
     gl_Position = projectionMatrix * mvPosition;
 
