@@ -90,6 +90,11 @@ type DynamicValuesChangerProps = {
     velocityVariable: Variable
 }
 
+const massDistribution = `<math display="block">
+              <mi>mass</mi><mo>=</mo><mi>M</mi><mo>&#183;</mo><mo>(</mo><mn>1</mn><mo>&#8722;</mo><mi>w</mi><mo>+</mo><mi>w</mi><mo>&#183;</mo><mi>u</mi><mo>)</mo>
+            </math>
+            where <math><mi>u</mi></math> is uniform in [0, 1).`;
+
 export const params: Partial<Record<keyof PendulumConfig, ParamSpec>> = {
     width: {
         value: 200, min: 1, max: 400, step: 1,
@@ -115,19 +120,21 @@ export const params: Partial<Record<keyof PendulumConfig, ParamSpec>> = {
         value: 0, min: 0, max: 4, step: 0.1,
         live: true,
         name: "Damping",
-        description: `The coefficient, d, of the drag on velocity defined by (-d / mass) * velocity`
+        description: `The coefficient, d, of the drag on velocity defined by <math display="block">
+              <mo>&#8722;</mo><mfrac><mi>d</mi><mi>mass</mi></mfrac><mo>&#183;</mo><mi>velocity</mi>
+            </math>`
     },
     maxParticleMass: {
         value: 100, min: 50, max: 1000, step: 50,
         live: false,
         name: "Max Particle Mass",
-        description: `The max of the inital mass distribution.`
+        description: `The max mass, M, of the initial mass distribution. ${massDistribution}`
     },
     randomWeightParticleMass: {
         value: 0, min: 0, max: 0.9, step: 0.1,
         live: false,
         name: "Mass Randomness Weight",
-        description: `The minimum bound of the inital mass distribution.`
+        description: `The weight, w, of randomness in the initial mass distribution. ${massDistribution}`
     }
 }
 
